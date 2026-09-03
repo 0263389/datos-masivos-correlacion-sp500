@@ -79,7 +79,7 @@ modificar nada: el proyecto **no contiene ninguna ruta personal**.
 **1. Clonar el repositorio**
 
 ```bash
-git clone https://github.com/USUARIO/datos-masivos-correlacion-sp500.git
+git clone https://github.com/0263389/datos-masivos-correlacion-sp500.git
 ```
 
 **2. Entrar a la carpeta**
@@ -220,10 +220,10 @@ uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conserva
 
 | Nombre | Responsabilidad |
 |---|---|
-| _(completar)_ | Extracción y configuración (`src/data.py`, `src/config.py`) |
-| _(completar)_ | Diagnóstico de calidad (`src/quality.py`) |
-| _(completar)_ | Rendimientos y correlación (`src/returns.py`, `src/analysis.py`) |
-| _(completar)_ | Documentación (`README.md`) |
+| Franco Rissotto | Extracción y configuración (`src/data.py`, `src/config.py`) |
+| Miguel Herrera | Diagnóstico de calidad (`src/quality.py`) |
+| Octavio de la Mora | Rendimientos y correlación (`src/returns.py`, `src/analysis.py`) |
+| Paolo del Valle | Documentación (`README.md`) |
 
 ---
 
