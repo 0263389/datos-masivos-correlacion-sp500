@@ -1,0 +1,24 @@
+# ---- Entorno virtual (nunca se sube: cada quien crea el suyo) ----
+.venv/
+venv/
+env/
+
+# ---- Credenciales: NUNCA subir llaves de API (requisito del entregable) ----
+.env
+*.key
+secrets/
+
+# ---- Cachés de Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- Datos crudos: pueden ser grandes. Solo versionamos data/processed/ ----
+data/raw/*
+!data/raw/.gitkeep
+
+# ---- macOS ----
+.DS_Store
