@@ -139,3 +139,72 @@ def calendar_gaps(prices: pd.DataFrame, max_gap_days: int = 5) -> pd.DataFrame:
     gaps = prices.index.to_series().diff().dt.days
     flagged = gaps[gaps > max_gap_days]
     return pd.DataFrame({"fecha": flagged.index, "dias_sin_datos": flagged.values})
+
+
+def missing_by_year(prices: pd.DataFrame) -> pd.DataFrame:
+    """Distribucion de los valores faltantes anio por anio.
+
+    Contar los nulos totales no dice nada por si solo: 40,000 huecos pueden ser
+    una fuente rota o pueden ser empresas que todavia no existian. Lo que
+    distingue un caso del otro es **donde** cae el hueco dentro de la historia
+    de cada ticker:
+
+    * ``previos_al_listado`` - el hueco esta antes de la primera cotizacion de
+      la empresa. No es un dato perdido: la accion aun no se negociaba. Se
+      espera que se concentren en los anios iniciales del periodo.
+
+    * ``posteriores_a_la_baja`` - el hueco esta despues de la ultima
+      cotizacion. La empresa salio del indice, fue adquirida o cambio de
+      ticker. Tampoco es un error de la fuente.
+
+    * ``huecos_internos`` - la empresa ya cotizaba y volvio a cotizar despues,
+      pero ese dia no hay precio. **Estos son los unicos preocupantes.** Si
+      aparecen repartidos por todos los anios apuntan a una descarga
+      incompleta; si se agrupan en fechas concretas, a dias que la fuente no
+      entrego.
+
+    La suma de las tres columnas es ``n_faltantes``, de modo que el desglose
+    siempre cuadra con el total que reporta :func:`structure_summary`.
+
+    Returns
+    -------
+    DataFrame indexado por anio con: dias_de_mercado, n_faltantes,
+    pct_faltantes, previos_al_listado, posteriores_a_la_baja, huecos_internos.
+    """
+    missing = prices.isna()
+
+    # Marca, para cada celda, si el ticker ya habia cotizado alguna vez
+    # (cumsum hacia adelante) y si volveria a cotizar despues (cumsum hacia
+    # atras). Una celda vacia entre ambos limites es un hueco real.
+    ya_cotizaba = prices.notna().cumsum() > 0
+    volvera_a_cotizar = prices.notna()[::-1].cumsum()[::-1] > 0
+
+    previos = missing & ~ya_cotizaba
+    posteriores = missing & ~volvera_a_cotizar
+    internos = missing & ya_cotizaba & volvera_a_cotizar
+
+    anio = prices.index.year
+    report = pd.DataFrame(
+        {
+            "dias_de_mercado": missing.groupby(anio).size(),
+            "n_faltantes": missing.sum(axis=1).groupby(anio).sum(),
+            "previos_al_listado": previos.sum(axis=1).groupby(anio).sum(),
+            "posteriores_a_la_baja": posteriores.sum(axis=1).groupby(anio).sum(),
+            "huecos_internos": internos.sum(axis=1).groupby(anio).sum(),
+        }
+    )
+    report["pct_faltantes"] = (
+        100 * report["n_faltantes"] / (report["dias_de_mercado"] * prices.shape[1])
+    ).round(2)
+    report.index.name = "anio"
+
+    return report[
+        [
+            "dias_de_mercado",
+            "n_faltantes",
+            "pct_faltantes",
+            "previos_al_listado",
+            "posteriores_a_la_baja",
+            "huecos_internos",
+        ]
+    ]
