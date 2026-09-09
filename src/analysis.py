@@ -125,3 +125,84 @@ def top_pairs(pairs: pd.DataFrame, n: int = 10, ascending: bool = False) -> pd.D
         .head(n)[columns]
         .reset_index(drop=True)
     )
+
+
+# --------------------------------------------------------------------------
+# Robustez: Pearson contra Spearman
+# --------------------------------------------------------------------------
+def _unique_pair_values(correlation: pd.DataFrame) -> np.ndarray:
+    """Valores del triangulo superior de la matriz, sin la diagonal.
+
+    Mismo criterio que ``pair_table``: cada par cuenta una sola vez y la
+    diagonal queda fuera porque vale 1.0 con cualquier metodo. Incluirla no
+    cambia el signo de nada, pero encoge cualquier promedio por un factor de
+    n/(n-1) al meter ceros que no son un resultado, son la definicion.
+    """
+    i, j = np.triu_indices(len(correlation), k=1)
+    return correlation.to_numpy()[i, j]
+
+
+def method_difference(pearson: pd.DataFrame, spearman: pd.DataFrame) -> pd.Series:
+    """Distribucion de |Pearson - Spearman| sobre los pares unicos.
+
+    Reportar solo el promedio esconde el caso interesante. El promedio puede
+    salir chico y aun asi existir pares donde los dos metodos discrepan
+    fuerte: son justamente los pares cuya correlacion la sostienen unos pocos
+    dias extremos. Por eso se devuelven tambien mediana, percentil 95 y
+    maximo.
+    """
+    if not pearson.columns.equals(spearman.columns):
+        raise ValueError(
+            "Ambas matrices deben tener los mismos tickers en el mismo orden."
+        )
+
+    diff = np.abs(_unique_pair_values(pearson) - _unique_pair_values(spearman))
+    return pd.Series(
+        {
+            "n_pares": float(len(diff)),
+            "media": diff.mean(),
+            "mediana": float(np.median(diff)),
+            "p95": float(np.percentile(diff, 95)),
+            "maximo": diff.max(),
+        },
+        name="|pearson - spearman|",
+    )
+
+
+def compare_methods(
+    returns: pd.DataFrame, constituents: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Repite el analisis sectorial completo con Pearson y con Spearman.
+
+    Pearson mide relacion lineal y le da todo el peso a los dias de
+    movimientos grandes: un dia de -18% pesa mucho mas que uno de -4%.
+    Spearman trabaja sobre rangos, donde esos dos dias solo son "el peor" y
+    "el cuarto peor". Correr ambas es una prueba de robustez.
+
+    La pregunta que importa no es si las dos matrices son identicas -nunca lo
+    son- sino si la **conclusion del entregable** sobrevive al cambio de
+    metodo: si sigue habiendo brecha entre los pares del mismo sector y los
+    de sectores distintos. Por eso no se comparan matrices sueltas sino el
+    resultado final que sale de cada una.
+
+    Returns
+    -------
+    (tabla comparativa por grupo, estadisticas de la diferencia por par)
+    """
+    matrices = {
+        method: correlation_matrix(returns, method=method)
+        for method in ("pearson", "spearman")
+    }
+    medias = {
+        method: sector_comparison(pair_table(correlation, constituents))["media"]
+        for method, correlation in matrices.items()
+    }
+
+    table = pd.DataFrame(medias)
+    # La brecha es el resultado del entregable. Que aguante el cambio de
+    # metodo es lo que lo vuelve creible.
+    table.loc["Brecha"] = table.loc["Mismo sector"] - table.loc["Distinto sector"]
+    table["diferencia"] = table["spearman"] - table["pearson"]
+    table.index.name = "grupo"
+
+    return table, method_difference(matrices["pearson"], matrices["spearman"])
