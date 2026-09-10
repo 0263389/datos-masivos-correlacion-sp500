@@ -1,10 +1,12 @@
+**Materia:** Datos Masivos · **Profesor:** Oscar Enrique Landivar Carrasco · **Semestre:** Séptimo
+semestre
+
 # Correlación entre acciones del S&P 500
 
 Motor de análisis de estructura de correlación y riesgo para los componentes del S&P 500,
 inspirado en la capa analítica de plataformas de gestión de riesgo como Aladdin (BlackRock).
 
-**Materia:** Datos Masivos · **Entregable 1** — Definición del problema, fuentes de datos y
-repositorio reproducible
+**Entregable 1** — Definición del problema, fuentes de datos y repositorio reproducible
 
 ---
 
@@ -73,8 +75,25 @@ Tres fuentes, **todas obtenidas mediante código**: dos por API/librería y una 
 
 ## Cómo ejecutarlo
 
-Requiere Python 3.11 o superior. Los cuatro comandos funcionan en cualquier computadora, sin
-modificar nada: el proyecto **no contiene ninguna ruta personal**.
+Requiere **Python 3.12 o superior** (`numpy==2.5.2` no instala en versiones anteriores). Los
+comandos funcionan en cualquier computadora, sin modificar nada: el proyecto **no contiene ninguna
+ruta personal**.
+
+**0. Revisa tu versión de Python**
+
+```bash
+python3 --version
+```
+
+Si el resultado es menor a 3.12, instala una versión más nueva antes de continuar:
+
+- **macOS (Homebrew):** `brew install python@3.12`, luego usa `python3.12` en vez de `python3` en
+  el paso 3.
+- **Windows/Linux:** descarga el instalador desde [python.org/downloads](https://www.python.org/downloads/).
+
+> Si te saltas este paso, el paso 3 falla con un error como
+> `ERROR: Could not find a version that satisfies the requirement numpy==2.5.2`. No es que algo
+> esté mal configurado: simplemente tu Python es demasiado viejo para estas dependencias.
 
 **1. Clonar el repositorio**
 
@@ -93,6 +112,9 @@ cd datos-masivos-correlacion-sp500
 ```bash
 python3 -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt
 ```
+
+Si `python3` apunta a una versión vieja, reemplázalo por la versión que instalaste en el paso 0
+(por ejemplo `python3.12 -m venv .venv`).
 
 **4. Abrir el notebook**
 
@@ -125,6 +147,15 @@ cp .env.example .env
 
 Luego abre `.env` y pega tu llave de [fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys).
 El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
+
+> `.env.example` también incluye `SEC_USER_AGENT`. Ningún módulo de `src/` lo usa todavía: está
+> reservado para un entregable futuro que consulte SEC EDGAR. Puedes dejarlo vacío por ahora.
+
+> ✅ **Verificado el 10 de septiembre de 2026** en macOS (Apple Silicon), clonando el repositorio
+> desde cero en una computadora que no tenía el proyecto instalado y siguiendo estos pasos al pie
+> de la letra. Con Python 3.9 y con Python 3.11 el paso 3 falla (`numpy==2.5.2` requiere Python
+> ≥3.12); con Python 3.12 el resto de los pasos funcionó sin ajustes: instalación de dependencias
+> y los cinco módulos de `src/` importan sin errores.
 
 ---
 
@@ -224,6 +255,65 @@ uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conserva
 | Miguel Herrera | Diagnóstico de calidad (`src/quality.py`) |
 | Octavio de la Mora | Rendimientos y correlación (`src/returns.py`, `src/analysis.py`) |
 | Paolo del Valle | Documentación (`README.md`) |
+
+---
+
+## Cómo contribuir
+
+Reglas de trabajo en equipo para evitar conflictos y archivos rotos.
+
+### Dueño de cada archivo
+
+| Archivo | Dueño |
+|---|---|
+| `src/data.py`, `src/config.py` | Franco Rissotto |
+| `src/quality.py` | Miguel Herrera |
+| `src/returns.py`, `src/analysis.py` | Octavio de la Mora |
+| `README.md`, `docs/` | Paolo del Valle |
+
+No edites un archivo que no es tuyo. Si necesitas un cambio ahí, pídeselo a quien es dueño.
+
+### La regla del notebook
+
+`notebooks/01_entregable1.ipynb` lo edita **una sola persona a la vez**, avisando antes en el
+grupo. Es un archivo JSON: si dos personas lo ejecutan y guardan al mismo tiempo, Git no puede
+fusionar los cambios y el conflicto casi nunca se resuelve limpio.
+
+### Flujo de trabajo
+
+1. `git pull` — siempre antes de empezar. La mayoría de los problemas de equipo salen de saltarse
+   este paso.
+2. Edita solo tus archivos.
+3. `git add <archivo>` — agrega archivo por archivo (no `git add .`), para no subir algo por
+   accidente.
+4. `git commit -m "mensaje descriptivo"`
+5. `git push`
+
+### Si el push es rechazado
+
+Git rechaza el push si alguien más subió cambios antes que tú. Se ve así:
+
+```
+! [rejected]        main -> main (fetch first)
+```
+
+Se soluciona con:
+
+```bash
+git pull
+git push
+```
+
+Si `git pull` marca un conflicto, resuélvelo a mano en el archivo (busca las marcas `<<<<<<<`,
+`=======`, `>>>>>>>`), guarda, y luego:
+
+```bash
+git add <archivo-con-conflicto>
+git commit
+git push
+```
+
+**Nunca uses `git push --force`**: puede borrar el trabajo de los demás.
 
 ---
 
