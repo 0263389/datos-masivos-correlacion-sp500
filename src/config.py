@@ -58,6 +58,20 @@ MARKET_TICKER = "^GSPC"  # indice S&P 500
 # Fuente de la lista de constituyentes y su clasificacion sectorial GICS.
 SP500_WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
+# Universo ampliado para el Entregable 2: el S&P Composite 1500, que es la
+# union de los tres indices por tamanio de capitalizacion. Las tres paginas de
+# Wikipedia comparten las mismas cuatro columnas que nos interesan, asi que el
+# mismo scraping sirve para las tres.
+#
+# El salto no es solo de volumen. Permite preguntar algo que con el S&P 500
+# solo no se puede: las empresas chicas dependen menos del mercado que las
+# grandes? El tamanio de capitalizacion entra como variable de analisis.
+SP_INDEX_URLS = {
+    "large": SP500_WIKI_URL,
+    "mid": "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies",
+    "small": "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies",
+}
+
 # Minimo de observaciones para que un ticker entre al analisis.
 #
 # Este numero es mas delicado de lo que parece. El analisis usa un "panel
@@ -99,6 +113,8 @@ MAX_EXTREME_EVENTS = 2
 # que se pueden regenerar y no tiene sentido versionarlos.
 PRICES_CACHE = RAW_DIR / "sp500_prices.parquet"
 CONSTITUENTS_CACHE = RAW_DIR / "sp500_constituents.parquet"
+SP1500_CONSTITUENTS_CACHE = RAW_DIR / "sp1500_constituents.parquet"
+SP1500_PRICES_CACHE = RAW_DIR / "sp1500_prices.parquet"
 MACRO_CACHE = RAW_DIR / "macro_fred.parquet"
 
 # Respaldo que SI viaja con el repositorio (data/processed/ no esta ignorado).
@@ -112,4 +128,5 @@ MACRO_CACHE = RAW_DIR / "macro_fred.parquet"
 # la rubrica pide subir solo datos pequenios o muestras.
 PRICES_FALLBACK = PROCESSED_DIR / "sp500_prices_fallback.parquet"
 CONSTITUENTS_FALLBACK = PROCESSED_DIR / "sp500_constituents.parquet"
+SP1500_CONSTITUENTS_FALLBACK = PROCESSED_DIR / "sp1500_constituents.parquet"
 MACRO_FALLBACK = PROCESSED_DIR / "macro_fred.parquet"

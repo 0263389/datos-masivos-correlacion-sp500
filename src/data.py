@@ -152,6 +152,8 @@ def get_prices(
     start: str | None = None,
     end: str | None = None,
     force_refresh: bool = False,
+    cache: Path | None = None,
+    fallback: Path | None = None,
 ) -> pd.DataFrame:
     """Descarga precios de cierre **ajustados** en formato ancho.
 
@@ -181,8 +183,8 @@ def get_prices(
         return prices.sort_index()
 
     return _load_with_fallback(
-        cache=config.PRICES_CACHE,
-        fallback=config.PRICES_FALLBACK,
+        cache=cache or config.PRICES_CACHE,
+        fallback=fallback or config.PRICES_FALLBACK,
         download=download,
         label="Yahoo Finance / precios",
         force_refresh=force_refresh,
@@ -270,5 +272,88 @@ def get_fred_series(
         fallback=config.MACRO_FALLBACK,
         download=download,
         label="FRED / macro",
+        force_refresh=force_refresh,
+    )
+
+
+# ==========================================================================
+# 4. Universo ampliado: S&P Composite 1500 (Entregable 2)
+# ==========================================================================
+def _download_index_members(url: str, cap_tier: str) -> pd.DataFrame:
+    """Descarga los constituyentes de uno de los tres indices S&P."""
+    response = requests.get(url, headers=_BROWSER_UA, timeout=30)
+    response.raise_for_status()
+
+    # Las tres paginas de Wikipedia tienen la tabla de constituyentes como
+    # primera tabla, pero se busca por columnas en lugar de asumir la posicion:
+    # si Wikipedia reordena la pagina, esto sigue funcionando.
+    table = None
+    for candidate in pd.read_html(StringIO(response.text)):
+        columns = [str(c) for c in candidate.columns]
+        if any(c in ("Symbol", "Ticker") for c in columns) and "GICS Sector" in columns:
+            table = candidate
+            break
+
+    if table is None:
+        raise RuntimeError(
+            f"No se encontro la tabla de constituyentes en {url}. "
+            "Probablemente cambio la estructura de la pagina."
+        )
+
+    symbol_col = "Symbol" if "Symbol" in table.columns else "Ticker"
+    return pd.DataFrame(
+        {
+            "ticker": table[symbol_col].map(to_yahoo_ticker),
+            "company": table["Security"].astype("string"),
+            "sector": table["GICS Sector"].astype("string"),
+            "sub_industry": table["GICS Sub-Industry"].astype("string"),
+            "cap_tier": cap_tier,
+        }
+    )
+
+
+def _download_sp1500_constituents() -> pd.DataFrame:
+    partes = [
+        _download_index_members(url, cap_tier)
+        for cap_tier, url in config.SP_INDEX_URLS.items()
+    ]
+    combinado = pd.concat(partes, ignore_index=True)
+
+    # Un ticker no deberia aparecer en dos indices a la vez, pero si pasa se
+    # conserva el de mayor capitalizacion: es el indice al que realmente
+    # pertenece, y duplicarlo romperia el conteo de pares unicos mas adelante.
+    orden = {"large": 0, "mid": 1, "small": 2}
+    combinado["_orden"] = combinado["cap_tier"].map(orden)
+    combinado = (
+        combinado.sort_values(["ticker", "_orden"])
+        .drop_duplicates(subset="ticker", keep="first")
+        .drop(columns="_orden")
+        .sort_values("ticker")
+        .reset_index(drop=True)
+    )
+    combinado["cap_tier"] = combinado["cap_tier"].astype("string")
+    return combinado
+
+
+def get_sp1500_constituents(force_refresh: bool = False) -> pd.DataFrame:
+    """Constituyentes del S&P Composite 1500 con su nivel de capitalizacion.
+
+    Union de los tres indices: S&P 500 (large cap), S&P MidCap 400 y S&P
+    SmallCap 600. Triplica el universo del Entregable 1 reutilizando la misma
+    tecnica de scraping.
+
+    La columna ``cap_tier`` (large / mid / small) es nueva y es la que habilita
+    la pregunta del Entregable 2: depende menos del mercado una empresa chica
+    que una grande?
+
+    Returns
+    -------
+    DataFrame con: ticker, company, sector, sub_industry, cap_tier.
+    """
+    return _load_with_fallback(
+        cache=config.SP1500_CONSTITUENTS_CACHE,
+        fallback=config.SP1500_CONSTITUENTS_FALLBACK,
+        download=_download_sp1500_constituents,
+        label="Wikipedia / S&P 1500",
         force_refresh=force_refresh,
     )
