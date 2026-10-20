@@ -368,7 +368,82 @@ print("fuera de muestra de este experimento, la restriccion manda.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Guardar en el lake
+# MAGIC ## 5. Úsalo con tu propio portafolio
+# MAGIC
+# MAGIC Esta sección es la herramienta en sí. **Cambia la lista de abajo por las
+# MAGIC acciones que quieras y vuelve a ejecutar la celda** — no hace falta tocar
+# MAGIC nada más.
+# MAGIC
+# MAGIC Funciona con cualquiera de los **1,211 tickers** que sobrevivieron los
+# MAGIC filtros de calidad de la capa Silver. Si escribes uno que no está, la celda
+# MAGIC te lo dice y continúa con los demás en lugar de fallar.
+# MAGIC
+# MAGIC Los pesos son opcionales: si no los das, reparte en partes iguales.
+
+# COMMAND ----------
+
+# ──────────────── EDITA ESTAS DOS LÍNEAS ────────────────
+MI_PORTAFOLIO = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
+                 "META", "TSLA", "AVGO", "ORCL", "CRM"]
+
+MIS_PESOS = None  # None = partes iguales. O una lista, p.ej. [0.3, 0.2, 0.1, ...]
+# ─────────────────────────────────────────────────────────
+
+mi_resultado = analizar(MI_PORTAFOLIO, "MI PORTAFOLIO", pesos=MIS_PESOS)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Cómo leer el resultado
+# MAGIC
+# MAGIC | Línea | Qué te dice |
+# MAGIC |---|---|
+# MAGIC | **Volatilidad anual del portafolio** | Cuánto se mueve al año. 15% significa que en un año típico puede subir o bajar un 15% |
+# MAGIC | **Promedio ponderado individual** | Lo que sería si las acciones no se cancelaran entre sí |
+# MAGIC | **Riesgo cancelado por correlación** | La diferencia entre los dos anteriores: lo que te ahorró diversificar |
+# MAGIC | **Ratio de diversificación** | Cuántas posiciones *verdaderamente independientes* tienes. 1.0 = todas se mueven igual |
+# MAGIC | **% riesgo** | Cuánto del riesgo total aporta cada posición |
+# MAGIC | **riesgo/peso** | La columna más útil. Arriba de 1.0 = esa posición carga más riesgo del que le toca por su tamaño |
+# MAGIC
+# MAGIC **La columna `riesgo/peso` es la que delata los problemas.** Si una posición
+# MAGIC del 10% tiene 1.5x, está aportando el 15% del riesgo: o es muy volátil, o está
+# MAGIC muy correlacionada con el resto del portafolio.
+# MAGIC
+# MAGIC ### Qué buscar
+# MAGIC
+# MAGIC - **Ratio de diversificación cerca de 1.0** → tus posiciones son redundantes.
+# MAGIC   Compara contra el máximo teórico que imprime al lado: con 10 acciones es
+# MAGIC   3.16, y acercarse a eso exigiría que no tuvieran ninguna correlación.
+# MAGIC - **Una posición con `riesgo/peso` muy alto** → está dominando el riesgo.
+# MAGIC   Reducirle peso baja la volatilidad total más de lo que parece.
+# MAGIC - **Compara dos listas** → corre la celda con una, anota el resultado, y
+# MAGIC   córrela con otra. Esa comparación es el uso natural de la herramienta.
+# MAGIC
+# MAGIC ### Para ver qué tickers hay disponibles
+
+# COMMAND ----------
+
+print(f"Tickers disponibles: {len(matriz.columns):,}\n")
+
+# Por sector, para que sea fácil armar un portafolio repartido.
+import collections
+
+por_sector = collections.defaultdict(list)
+for ticker in matriz.columns:
+    por_sector[sectores.get(ticker, "?")].append(ticker)
+
+for sector in sorted(por_sector):
+    tickers = por_sector[sector]
+    print(f"{sector[:24]:26} {len(tickers):>4}  ej: {', '.join(tickers[:8])}")
+
+print()
+print("Para buscar uno en concreto:")
+print("  'NVDA' in matriz.columns")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 6. Guardar en el lake
 
 # COMMAND ----------
 
