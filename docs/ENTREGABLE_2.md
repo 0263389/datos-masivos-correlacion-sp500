@@ -91,6 +91,11 @@ La matemática de riesgo no vive en los notebooks: está en
 [`src/risk.py`](../src/risk.py) con **25 pruebas automáticas** en
 [`tests/test_risk.py`](../tests/test_risk.py). Los notebooks solo orquestan y narran.
 
+Los seis se entregan como archivos `.py` y **no traen las salidas incrustadas**: los resultados de
+cada ejecución están documentados en la sección [Hallazgos](#hallazgos) de este mismo documento.
+Es el precio de que sean texto plano y no JSON — ver la nota en el
+[README](../README.md#entregable-2-el-data-lake-en-databricks).
+
 ---
 
 ## Hallazgos

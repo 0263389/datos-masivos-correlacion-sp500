@@ -194,6 +194,22 @@ anterior.
 > ⚠️ **Elige *General compute → Serverless***, no un SQL warehouse. Un warehouse solo ejecuta
 > celdas SQL y las de Python fallan.
 
+> **Sobre el formato de los notebooks de Databricks.** Se entregan como archivos `.py`
+> (*Databricks notebook source*), no como `.ipynb`. Eso significa que **no traen las salidas
+> incrustadas**: al abrirlos en GitHub se ve el código, no los resultados.
+>
+> Es una decisión deliberada y es consecuencia directa de la regla que el propio proyecto adoptó en
+> el Entregable 1. Un `.ipynb` es un JSON donde cada ejecución reescribe miles de líneas —las
+> salidas, los contadores, las imágenes en base64— así que dos personas que lo corran generan un
+> conflicto de fusión irresoluble. Con cuatro integrantes eso era inviable. Los `.py` son texto
+> plano: Git los fusiona, se pueden revisar línea por línea en un *diff*, y se editan desde VS Code
+> igual que cualquier otro archivo.
+>
+> El costo de esa decisión es que los resultados no viajan dentro del archivo. Están documentados
+> aparte, con sus números, en **[`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md)**. Para reproducirlos
+> basta correr los notebooks en orden siguiendo las instrucciones de arriba.
+
+
 Para correr las pruebas del motor de riesgo, que no necesitan Spark ni Databricks:
 
 ```bash
