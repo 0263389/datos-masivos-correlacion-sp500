@@ -236,8 +236,18 @@ print()
 if pend_pandas > pend_spark:
     cruce = (fijo_spark - fijo_pandas) / (pend_pandas - pend_spark)
     actual = tabla["filas"].max()
-    print(f"  PUNTO DE CRUCE: {cruce / 1e6:.1f} millones de filas")
+    print(f"  punto de cruce estimado: {cruce / 1e6:.1f} millones de filas")
     print(f"  = {cruce / actual:.1f}x el conjunto actual")
+    print()
+    print("  CUIDADO CON ESTE NUMERO. Es sensible al ruido de medicion: los")
+    print("  tiempos de Spark no salen monotonos entre corridas, y basta una")
+    print("  medicion atipica en un tamanio chico para mover la pendiente del")
+    print("  ajuste. Dos corridas de este mismo notebook dieron 7.8 y 10.4")
+    print("  millones.")
+    print()
+    print("  Lo defendible es el ORDEN DE MAGNITUD: el cruce esta entre 8 y 10")
+    print("  millones de filas, unas 2 a 3 veces el conjunto actual. Afirmar una")
+    print("  cifra exacta seria darle al metodo una precision que no tiene.")
 else:
     print("  Las curvas no se cruzan en el rango medido.")
 
@@ -361,16 +371,21 @@ print("decision mas barata suele ser elegir mejor el algoritmo.")
 # MAGIC    distribuir.
 # MAGIC
 # MAGIC 2. **Nuestro conjunto de 3.5 millones de filas sigue siendo chico** para los
-# MAGIC    estándares de Spark. Decirlo es más honesto que fingir lo contrario, y es
-# MAGIC    el punto de partida para justificar la siguiente ampliación del universo.
+# MAGIC    estándares de Spark: el cruce está entre 8 y 10 millones, o sea 2 a 3
+# MAGIC    veces más. Decirlo es más honesto que fingir lo contrario, y además da
+# MAGIC    una meta concreta: ampliar el universo a unos 3,500 tickers, o pasar a
+# MAGIC    datos intradía, pondría al proyecto del lado correcto del cruce.
 # MAGIC
 # MAGIC 3. **La ventaja real de Spark no es la velocidad, es el techo.** pandas está
 # MAGIC    limitado por la memoria de una sola máquina; Spark no. El `self-join` de la
 # MAGIC    sección 5 lo ilustra: no es que pandas tarde más, es que no puede.
 # MAGIC
-# MAGIC 4. **El particionado importa más que el motor.** Filtrar por una partición
-# MAGIC    evita leer datos, y eso vale más que cualquier diferencia de velocidad
-# MAGIC    entre librerías.
+# MAGIC 4. **El particionado funciona, pero a esta escala no se nota.** El plan de
+# MAGIC    ejecución confirma que Spark descarta once de los doce años sin abrirlos
+# MAGIC    — y aun así el tiempo apenas baja. Leer el 9% de los datos tomó casi el
+# MAGIC    mismo tiempo que leerlos todos, porque el cuello de botella no es la
+# MAGIC    lectura sino la coordinación. El particionado es una inversión que paga
+# MAGIC    cuando los datos crecen, no hoy.
 # MAGIC
 # MAGIC 5. **La mejor optimización fue algorítmica, no de infraestructura.** Cambiar
 # MAGIC    el enfoque de O(n²) a O(n) con el factor de mercado ahorró más que
