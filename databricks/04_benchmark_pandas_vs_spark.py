@@ -214,6 +214,47 @@ plt.show()
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ### Dónde está el punto de cruce
+# MAGIC
+# MAGIC pandas gana en todos los tamaños medidos, pero **la ventaja se encoge de
+# MAGIC forma monótona**: 46x a 10 mil filas, 1.8x a 3.5 millones. Eso permite
+# MAGIC extrapolar dónde se cruzan las curvas.
+# MAGIC
+# MAGIC El modelo es `tiempo = costo_fijo + costo_marginal × filas`. Ajustarlo a los
+# MAGIC datos medidos y resolver dónde se igualan da el volumen a partir del cual
+# MAGIC conviene cambiar de motor.
+
+# COMMAND ----------
+
+pend_pandas, fijo_pandas = np.polyfit(tabla["filas"], tabla["pandas"], 1)
+pend_spark, fijo_spark = np.polyfit(tabla["filas"], tabla["spark"], 1)
+
+print(f"  pandas: {fijo_pandas:.3f}s fijo + {pend_pandas * 1e6:.3f}s por millón de filas")
+print(f"  Spark : {fijo_spark:.3f}s fijo + {pend_spark * 1e6:.3f}s por millón de filas")
+print()
+
+if pend_pandas > pend_spark:
+    cruce = (fijo_spark - fijo_pandas) / (pend_pandas - pend_spark)
+    actual = tabla["filas"].max()
+    print(f"  PUNTO DE CRUCE: {cruce / 1e6:.1f} millones de filas")
+    print(f"  = {cruce / actual:.1f}x el conjunto actual")
+else:
+    print("  Las curvas no se cruzan en el rango medido.")
+
+print()
+print("Los dos numeros que resumen todo el benchmark:")
+crecimiento_datos = tabla["filas"].max() / tabla["filas"].min()
+print(f"  con {crecimiento_datos:.0f}x mas datos...")
+print(f"    pandas tardo {tabla['pandas'].iloc[-1] / tabla['pandas'].iloc[0]:.0f}x mas")
+print(f"    Spark  tardo {tabla['spark'].iloc[-1] / tabla['spark'].iloc[0]:.1f}x mas")
+print()
+print("Spark apenas se inmuto. Ese es el punto: su costo es casi todo fijo, y")
+print("el costo fijo se amortiza. El de pandas es casi todo marginal, y el")
+print("costo marginal se acumula.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 4. Partition pruning: el beneficio que no se ve en el reloj
 # MAGIC
 # MAGIC Las tablas están particionadas por año. Eso significa que una consulta
@@ -244,6 +285,14 @@ print(f"  leer los 12 años : {t_todo:6.3f}s  ({filas_todo:,} filas)")
 print(f"  leer solo 2020   : {t_anio:6.3f}s  ({filas_anio:,} filas)")
 print(f"  datos leídos     : {100 * filas_anio / filas_todo:5.1f}% del total")
 print(f"  tiempo           : {100 * t_anio / t_todo:5.1f}% del total")
+print()
+print("OJO CON ESTE RESULTADO: leer el 9% de los datos NO toma el 9% del")
+print("tiempo. A esta escala el cuello de botella no es leer, es coordinar.")
+print("El pruning si ocurrio -el plan de ejecucion de la celda siguiente lo")
+print("demuestra- pero su beneficio queda enterrado bajo el costo fijo.")
+print()
+print("Es el mismo hallazgo del benchmark visto por otro lado: con 3.5")
+print("millones de filas, Spark pasa mas tiempo organizandose que trabajando.")
 
 # COMMAND ----------
 
@@ -287,8 +336,10 @@ print(f"  tickers                      : {n_tickers:,}")
 print(f"  fechas                       : {n_fechas:,}")
 print(f"  pares únicos                 : {pares:,}")
 print()
+memoria_gb = filas_join * bytes_por_fila / 1024**3
 print(f"  filas de un self-join        : {filas_join:,}")
-print(f"  memoria que exigiría en RAM  : {filas_join * bytes_por_fila / 1024**4:,.1f} TB")
+print(f"  memoria que exigiría en RAM  : {memoria_gb:,.0f} GB")
+print(f"  (para comparar: una laptop típica tiene 8 a 32 GB)")
 print()
 print("Spark puede EXPRESAR ese calculo y procesarlo por bloques, derramando a")
 print("disco lo que no cabe en memoria. pandas tendria que materializarlo entero")
