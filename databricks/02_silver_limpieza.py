@@ -244,7 +244,21 @@ for umbral in [500, 1000, 1500, 2000, 2500, 2800, 2900, dias_totales]:
 
 # COMMAND ----------
 
-MIN_OBSERVACIONES = 2500  # ajustar según la tabla de arriba
+# Elegido con la tabla de arriba, medida sobre los datos reales:
+#
+#     umbral   empresas   dias del panel   observaciones
+#       2500      1,256            2,501           3.14M
+#       2900      1,203            ~2,900          ~3.49M
+#
+# Subir el umbral da MAS datos, no menos. El ticker mas justo le impone el
+# techo a todos los demas: con 2500, uno al que le faltan 465 dias obliga a
+# descartar esos 465 dias para las 1,256 empresas. Excluirlo cuesta 53
+# empresas (4%) y devuelve 400 dias de historia a las 1,203 restantes.
+#
+# No se exige el maximo (2,965) porque ahi solo sobreviven 11 empresas:
+# practicamente ninguna accion cotiza absolutamente todos los dias del
+# periodo, asi que ese umbral no mide historia, mide casualidad.
+MIN_OBSERVACIONES = 2900
 
 tickers_validos = (
     validos.filter(F.col("n_obs") >= MIN_OBSERVACIONES)
