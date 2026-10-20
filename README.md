@@ -41,6 +41,25 @@ de la gestión de riesgo cuantitativa.
 El co-movimiento dentro de un sector es **1.39 veces** el que hay entre sectores distintos, medido
 sobre 104,653 pares únicos y 11.6 años de rendimientos diarios.
 
+> **Sobre los números de este README.** Corresponden a una ejecución con datos del **2015-01-02 al
+> 2026-09-02**. Quien clone el repositorio y corra el notebook hoy va a obtener valores ligeramente
+> distintos —del orden de 0.4377 en vez de 0.4404— y conviene explicar por qué.
+>
+> `END_DATE` está en `None`, que significa *"hasta el día más reciente disponible"*. Cada ejecución
+> incorpora los días de mercado que hayan pasado desde la anterior, así que los promedios se mueven
+> en la tercera o cuarta cifra decimal. Las ejecuciones locales además leen el caché de `data/raw/`,
+> que puede ser más antiguo que la fecha de hoy.
+>
+> **Las conclusiones no cambian:** la brecha entre sectores se ha mantenido en 1.39× en todas las
+> corridas, y el orden de los sectores por cohesión tampoco se altera.
+>
+> Si necesitas resultados idénticos a los documentados, fija la ventana en `src/config.py`:
+>
+> ```python
+> END_DATE = "2026-09-02"
+> ```
+
+
 ![Correlación promedio entre sectores](figures/matriz_sectores.png)
 
 **Lo que valida el resultado.** Los pares con mayor correlación son exactamente los que deberían

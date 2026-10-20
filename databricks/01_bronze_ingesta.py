@@ -77,6 +77,24 @@ print(f"Spark {spark.version}")
 
 # COMMAND ----------
 
+# ──────────────────────────────────────────────────────────────────────
+# Nota sobre la duplicacion con src/data.py
+#
+# Las funciones de scraping de abajo repiten lo que ya hace
+# `src.data.get_sp1500_constituents()`. La duplicacion es deliberada.
+#
+# Este notebook es el punto de entrada del data lake: debe poder construir la
+# capa Bronze desde cero aunque se ejecute suelto, sin que el repositorio este
+# montado como Git folder. Importar desde src/ lo volveria dependiente de una
+# ruta que en una ejecucion programada puede no existir.
+#
+# Los notebooks 05 y 06 si importan de src/ -- pero ellos leen tablas que
+# Bronze ya escribio, asi que fallar ahi es recuperable. Fallar en la ingesta
+# deja el lake vacio.
+#
+# El costo: si Wikipedia cambia la estructura de sus tablas, hay que
+# arreglarlo en los dos lados.
+# ──────────────────────────────────────────────────────────────────────
 def a_ticker_yahoo(simbolo: str) -> str:
     """Wikipedia escribe BRK.B; Yahoo escribe BRK-B.
 
