@@ -96,6 +96,7 @@ from src.risk import (
     equal_weights,
     ledoit_wolf_shrinkage,
     min_variance_weights,
+    min_variance_weights_long_only,
     risk_decomposition,
     risk_report,
     sample_covariance,
@@ -274,19 +275,26 @@ print("La diferencia completa está en las correlaciones.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. ¿Sirve de verdad el shrinkage?
+# MAGIC ## 4. ¿Qué mejora de verdad el resultado?
 # MAGIC
-# MAGIC Todo lo anterior asume que la matriz encogida es mejor. Eso hay que
-# MAGIC **demostrarlo**, y la única prueba válida es **fuera de muestra**.
+# MAGIC Lo anterior asume que la matriz encogida produce mejores portafolios. Eso
+# MAGIC hay que **demostrarlo**, y la única prueba válida es **fuera de muestra**.
 # MAGIC
 # MAGIC Con la primera parte de la historia se estima la covarianza y se construye el
 # MAGIC portafolio de **mínima varianza** — el que el modelo cree que será el más
 # MAGIC estable. Con la parte final, que el modelo nunca vio, se mide la volatilidad
 # MAGIC que **realmente** tuvo.
 # MAGIC
+# MAGIC Se comparan cinco estrategias, y la variable que resultó decisiva **no fue el
+# MAGIC estimador de covarianza sino la restricción de no vender en corto**. La
+# MAGIC primera versión de este notebook solo probaba las versiones sin restricción y
+# MAGIC concluía, con una ventaja de 0.15 puntos, que el shrinkage ganaba. Mirando la
+# MAGIC columna "en corto" se entendió por qué esa conclusión no servía: ambos
+# MAGIC portafolios exigían vender en corto más del 100% del capital, así que ninguno
+# MAGIC de los dos era implementable.
+# MAGIC
 # MAGIC Se usa un subconjunto de 150 activos para que la matriz muestral sea al menos
-# MAGIC invertible: con los 1,200 y la mitad de la historia simplemente no lo es, y
-# MAGIC el experimento no tendría contra qué comparar.
+# MAGIC invertible: con los 1,200 y la mitad de la historia simplemente no lo es.
 
 # COMMAND ----------
 
@@ -304,25 +312,50 @@ print(f"  entrenamiento : {entrena.shape[0]:,} días x {entrena.shape[1]} activo
 print(f"  prueba        : {prueba.shape[0]:,} días (nunca vistos)")
 print(f"  δ             : {delta_sub:.4f}")
 print()
-print(f"{'estrategia':24} {'vol REAL':>11} {'vol prometida':>15} {'brecha':>9} "
-      f"{'pos. máx':>10} {'en corto':>10}")
-print("-" * 82)
+print(f"{'estrategia':32} {'vol REAL':>10} {'prometida':>11} {'brecha':>9} {'en corto':>10}")
+print("-" * 76)
 
+resultados_oos = {}
 for nombre, w, cov_usada in [
-    ("mínima var. muestral", min_variance_weights(cov_m_tr), cov_m_tr),
-    ("mínima var. encogida", min_variance_weights(cov_e_tr), cov_e_tr),
+    ("mín. var. muestral (libre)", min_variance_weights(cov_m_tr), cov_m_tr),
+    ("mín. var. encogida (libre)", min_variance_weights(cov_e_tr), cov_e_tr),
+    ("mín. var. muestral (solo largo)", min_variance_weights_long_only(cov_m_tr), cov_m_tr),
+    ("mín. var. encogida (solo largo)", min_variance_weights_long_only(cov_e_tr), cov_e_tr),
     ("pesos iguales", equal_weights(len(seleccion)), cov_m_tr),
 ]:
     vol_real = float(np.std(prueba @ w) * np.sqrt(DIAS_HABILES))
     prometida = float(np.sqrt(w @ cov_usada @ w))
-    print(f"{nombre:24} {100 * vol_real:10.2f}% {100 * prometida:14.2f}% "
-          f"{100 * (vol_real - prometida):8.2f}pp {100 * np.abs(w).max():9.1f}% "
-          f"{100 * w[w < 0].sum():9.1f}%")
+    resultados_oos[nombre] = vol_real
+    print(f"{nombre:32} {100 * vol_real:9.2f}% {100 * prometida:10.2f}% "
+          f"{100 * (vol_real - prometida):8.2f}pp {100 * w[w < 0].sum():9.1f}%")
 
 print()
-print("La 'vol prometida' es lo que el modelo creía que iba a pasar; la 'vol")
-print("REAL' es lo que pasó. La brecha mide cuánto se engañó el modelo consigo")
-print("mismo, y es ahí donde la matriz muestral falla más feo.")
+ganancia_restriccion = (
+    resultados_oos["mín. var. muestral (libre)"]
+    - resultados_oos["mín. var. muestral (solo largo)"]
+)
+ganancia_shrinkage = (
+    resultados_oos["mín. var. muestral (solo largo)"]
+    - resultados_oos["mín. var. encogida (solo largo)"]
+)
+print("QUÉ APORTÓ CADA COSA (puntos porcentuales de volatilidad real)")
+print(f"  prohibir el corto                      : {100 * ganancia_restriccion:+6.2f} pp")
+print(f"  mejorar el estimador (dentro de largo) : {100 * ganancia_shrinkage:+6.2f} pp")
+print()
+print("La restricción pesa mucho más que el estimador, y la razón está en la")
+print("columna 'en corto'. Sin restricción, la optimización explota los errores")
+print("de estimación: si por ruido cree que dos activos se cancelan, apalanca esa")
+print("creencia sin limite. El resultado es optimo en el papel e inviable en la")
+print("practica.")
+print()
+print("La columna 'brecha' lo confirma por otro lado: los portafolios libres")
+print("prometen menos riesgo del que entregan -se enganian a si mismos-, mientras")
+print("que los de solo largo se equivocan hacia el lado conservador.")
+print()
+print("Esto no vuelve inutil al shrinkage: su aporte esta en el condicionamiento")
+print("de la matriz, que mejoro 16 veces en la seccion 2, y eso es lo que permite")
+print("que la optimizacion sea numericamente estable. Pero sobre el resultado")
+print("fuera de muestra de este experimento, la restriccion manda.")
 
 # COMMAND ----------
 

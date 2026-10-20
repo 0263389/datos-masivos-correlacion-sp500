@@ -177,3 +177,47 @@ class TestRegimenes:
         assert len(tabla) == 4
         assert (tabla["ratio_diversificacion"] > 0).all()
         assert (tabla["vol_portafolio"] > 0).all()
+
+
+class TestLargoSolamente:
+    """Minima varianza con restriccion de no vender en corto."""
+
+    def test_sin_posiciones_en_corto(self, rendimientos_sinteticos):
+        from src.risk import min_variance_weights_long_only
+        w = min_variance_weights_long_only(sample_covariance(rendimientos_sinteticos))
+        assert (w >= -1e-9).all()
+
+    def test_los_pesos_suman_uno(self, rendimientos_sinteticos):
+        from src.risk import min_variance_weights_long_only
+        w = min_variance_weights_long_only(sample_covariance(rendimientos_sinteticos))
+        assert np.isclose(w.sum(), 1.0)
+
+    def test_nunca_mejora_a_la_version_sin_restriccion(self, rendimientos_sinteticos):
+        """Restringir no puede bajar la varianza: el optimo libre es una cota."""
+        from src.risk import min_variance_weights_long_only
+        cov = sample_covariance(rendimientos_sinteticos)
+        w_libre = min_variance_weights(cov)
+        w_largo = min_variance_weights_long_only(cov)
+        assert (w_largo @ cov @ w_largo) >= (w_libre @ cov @ w_libre) - 1e-12
+
+    def test_mejora_a_pesos_iguales(self, rendimientos_sinteticos):
+        """Pero si debe superar al punto de comparacion ingenuo."""
+        from src.risk import min_variance_weights_long_only
+        cov = sample_covariance(rendimientos_sinteticos)
+        w_largo = min_variance_weights_long_only(cov)
+        w_igual = equal_weights(cov.shape[0])
+        assert (w_largo @ cov @ w_largo) <= (w_igual @ cov @ w_igual)
+
+    def test_concentra_en_el_activo_tranquilo(self):
+        """Sin correlacion, debe cargar el de menor varianza."""
+        from src.risk import min_variance_weights_long_only
+        w = min_variance_weights_long_only(np.diag([0.01, 0.04, 0.09]))
+        assert w[0] > w[1] > w[2]
+
+    def test_proyeccion_al_simplex(self):
+        from src.risk import _project_to_simplex
+        for v in [np.array([0.5, 0.3, 0.2]), np.array([2.0, -1.0, 0.5]),
+                  np.array([-3.0, -1.0, -2.0])]:
+            p = _project_to_simplex(v)
+            assert np.isclose(p.sum(), 1.0)
+            assert (p >= -1e-12).all()

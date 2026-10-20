@@ -313,3 +313,56 @@ def regime_comparison(
         })
 
     return pd.DataFrame(filas)
+
+
+def _project_to_simplex(v: np.ndarray) -> np.ndarray:
+    """Proyeccion euclidiana al simplex: pesos no negativos que suman 1.
+
+    Algoritmo de Duchi et al. (2008). Encuentra el punto del simplex mas
+    cercano a ``v``, que es lo que permite forzar la restriccion en cada paso
+    del descenso sin deformar la direccion de busqueda mas de lo necesario.
+    """
+    n = v.shape[0]
+    u = np.sort(v)[::-1]
+    acumulado = np.cumsum(u)
+    indices = np.arange(1, n + 1)
+    validos = u + (1 - acumulado) / indices > 0
+    rho = indices[validos][-1]
+    theta = (1 - acumulado[rho - 1]) / rho
+    return np.maximum(v + theta, 0.0)
+
+
+def min_variance_weights_long_only(
+    cov: np.ndarray, max_iter: int = 5000, tol: float = 1e-11
+) -> np.ndarray:
+    """Minima varianza con la restriccion de no vender en corto.
+
+    **Por que hace falta.** La version sin restricciones produce posiciones en
+    corto enormes -en este proyecto llego a -155% del capital- porque explota
+    los errores de estimacion de la covarianza: si el modelo cree por ruido que
+    dos activos se cancelan, la optimizacion apalanca esa creencia sin limite.
+    El resultado es matematicamente optimo e imposible de implementar.
+
+    Exigir pesos no negativos actua como una regularizacion implicita: acota lo
+    que la optimizacion puede apostar a una correlacion estimada, asi que el
+    portafolio resultante sobrevive mucho mejor fuera de muestra.
+
+    Se resuelve con descenso de gradiente proyectado. El gradiente de
+    ``w' Sigma w`` es ``2 Sigma w``, y tras cada paso se proyecta de vuelta al
+    simplex. El paso se fija con el mayor valor propio, que acota la curvatura
+    del problema y garantiza que el descenso no se pase.
+    """
+    cov = np.asarray(cov, dtype=np.float64)
+    n = cov.shape[0]
+    w = np.full(n, 1.0 / n)
+
+    paso = 1.0 / (2.0 * float(np.linalg.eigvalsh(cov)[-1]))
+
+    for _ in range(max_iter):
+        nuevo = _project_to_simplex(w - paso * (2.0 * cov @ w))
+        if np.max(np.abs(nuevo - w)) < tol:
+            w = nuevo
+            break
+        w = nuevo
+
+    return w
