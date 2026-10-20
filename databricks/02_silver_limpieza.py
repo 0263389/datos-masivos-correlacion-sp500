@@ -199,9 +199,27 @@ reporte.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{SILVER}.quality_report"
 )
 
-display(
-    reporte.groupBy("motivo_exclusion").count().orderBy(F.desc("count"))
+resumen = (
+    reporte.groupBy("motivo_exclusion").count().orderBy(F.desc("count")).collect()
 )
+print("EXCLUSIONES POR MOTIVO")
+for fila in resumen:
+    motivo = fila["motivo_exclusion"] or "(sin problema)"
+    print(f"  {motivo:20} {fila['count']:>6,}")
+
+print()
+print("TICKERS EXCLUIDOS POR DATOS CORRUPTOS O PRECIO ESTANCADO")
+detalle = (
+    reporte.filter(F.col("motivo_exclusion").isNotNull())
+    .select("ticker", "company", "cap_tier", "n_eventos_extremos",
+            "dias_estancado", "motivo_exclusion")
+    .orderBy(F.desc("dias_estancado"), F.desc("n_eventos_extremos"))
+    .limit(20).collect()
+)
+for f in detalle:
+    print(f"  {f['ticker']:7} {str(f['company'])[:26]:28} {f['cap_tier']:6} "
+          f"extremos={f['n_eventos_extremos']:<3} estancado={f['dias_estancado']:<4} "
+          f"{f['motivo_exclusion']}")
 
 # COMMAND ----------
 
@@ -325,16 +343,23 @@ display(resultado.limit(5))
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   cap_tier,
-# MAGIC   COUNT(DISTINCT ticker)        AS empresas,
-# MAGIC   COUNT(*)                      AS observaciones,
-# MAGIC   ROUND(AVG(log_return), 6)     AS rendimiento_medio,
-# MAGIC   ROUND(STDDEV(log_return), 4)  AS volatilidad_diaria
-# MAGIC FROM workspace.silver.returns
-# MAGIC GROUP BY cap_tier
-# MAGIC ORDER BY empresas DESC
+# Mismo resultado que la consulta SQL equivalente, pero impreso como texto
+# para poder copiarlo. La version SQL queda en la celda siguiente.
+verificacion = spark.sql(f"""
+    SELECT cap_tier,
+           COUNT(DISTINCT ticker)        AS empresas,
+           COUNT(*)                      AS observaciones,
+           ROUND(AVG(log_return), 6)     AS rendimiento_medio,
+           ROUND(STDDEV(log_return), 4)  AS volatilidad_diaria
+    FROM {SILVER}.returns
+    GROUP BY cap_tier
+    ORDER BY empresas DESC
+""").collect()
+
+print(f"{'tamanio':8} {'empresas':>9} {'observaciones':>14} {'rend_medio':>12} {'volatilidad':>12}")
+for f in verificacion:
+    print(f"{f['cap_tier']:8} {f['empresas']:>9,} {f['observaciones']:>14,} "
+          f"{f['rendimiento_medio']:>12.6f} {f['volatilidad_diaria']:>12.4f}")
 
 # COMMAND ----------
 
