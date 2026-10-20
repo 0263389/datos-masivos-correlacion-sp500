@@ -1,0 +1,14 @@
+{
+  // Los notebooks de databricks/ se ejecutan en Databricks, no localmente.
+  // Allá el entorno inyecta `spark`, `dbutils` y `display` como variables
+  // globales, pero VS Code lee los archivos como Python normal y los marca
+  // como indefinidos. Son falsos positivos: el código es correcto donde corre.
+  //
+  // Se excluyen del análisis estático en lugar de silenciar la regla a nivel
+  // de proyecto, para que src/ y tests/ sigan revisándose por completo.
+  "python.analysis.ignore": ["databricks/**"],
+
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"]
+}
