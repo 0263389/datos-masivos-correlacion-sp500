@@ -83,6 +83,14 @@ if str(RAIZ) not in sys.path:
 
 print(f"Raíz del repositorio: {RAIZ}")
 
+# Python guarda en sys.modules los modulos ya importados, asi que despues de un
+# `git pull` una re-ejecucion seguiria usando la version vieja de src/risk.py y
+# fallaria con ImportError al buscar funciones nuevas. Purgarlos fuerza a leer
+# el archivo actualizado sin tener que reiniciar el interprete.
+for _modulo in [m for m in list(sys.modules) if m == "src" or m.startswith("src.")]:
+    del sys.modules[_modulo]
+
+
 # COMMAND ----------
 
 import matplotlib.pyplot as plt
