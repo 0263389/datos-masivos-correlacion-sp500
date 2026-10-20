@@ -38,17 +38,63 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 0. Arranque: encontrar el repositorio
+# MAGIC
+# MAGIC Igual que el notebook 05: la matemática de riesgo vive en `src/risk.py`, un
+# MAGIC nivel arriba de `databricks/`. Sin rutas escritas a mano.
+
+# COMMAND ----------
+
+import sys
+from pathlib import Path
+
+
+def encontrar_raiz_del_repo() -> Path:
+    """Localiza la raíz del repositorio sin asumir ninguna ruta fija."""
+    actual = Path.cwd()
+    for candidato in [actual, *actual.parents]:
+        if (candidato / "src" / "risk.py").is_file():
+            return candidato
+    try:
+        ruta = (
+            dbutils.notebook.entry_point.getDbutils()
+            .notebook().getContext().notebookPath().get()
+        )
+        base = Path("/Workspace") / ruta.lstrip("/")
+        for candidato in base.parents:
+            if (candidato / "src" / "risk.py").is_file():
+                return candidato
+    except Exception:
+        pass
+    raise RuntimeError(
+        "No se encontró src/risk.py. Verifica que el notebook se ejecute desde "
+        "el Git folder del repositorio."
+    )
+
+
+RAIZ = encontrar_raiz_del_repo()
+if str(RAIZ) not in sys.path:
+    sys.path.insert(0, str(RAIZ))
+
+print(f"Raíz del repositorio: {RAIZ}")
+
+# COMMAND ----------
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pyspark.sql import Window
 from pyspark.sql import functions as F
+
+from src.risk import (
+    DIAS_HABILES,
+    classify_regimes,
+    regime_comparison,
+)
 
 CATALOGO = "workspace"
 SILVER = f"{CATALOGO}.silver"
 GOLD = f"{CATALOGO}.gold"
-DIAS_HABILES = 252
-
 # Paleta del proyecto, validada para visión con daltonismo.
 AZUL, NARANJA = "#2a78d6", "#eb6834"
 TINTA, TINTA_SUAVE = "#0b0b0b", "#52514e"
@@ -166,18 +212,9 @@ print(f"  correlación (cohesión, rendimiento del mes) : {corr_rend:+.3f}")
 print(f"  correlación (cohesión, volatilidad del mes) : {corr_vol:+.3f}")
 print()
 
-tercios = datos["rend_mes"].quantile([1 / 3, 2 / 3]).to_list()
-
-
-def clasificar(r: float) -> str:
-    if r <= tercios[0]:
-        return "meses malos"
-    if r >= tercios[1]:
-        return "meses buenos"
-    return "meses normales"
-
-
-datos["regimen"] = datos["rend_mes"].map(clasificar)
+# classify_regimes parte los meses en tercios. Esta en src/risk.py con sus
+# pruebas, en lugar de repetir la logica del quantile en cada notebook.
+datos["regimen"] = classify_regimes(datos.set_index("mes")["rend_mes"]).values
 tabla = datos.groupby("regimen").agg(
     meses=("cohesion", "size"),
     cohesion_media=("cohesion", "mean"),
@@ -303,37 +340,32 @@ for tier in ["large", "mid", "small"]:
 
 # COMMAND ----------
 
-meses_malos = set(datos.loc[datos["regimen"] == "meses malos", "mes"].dt.to_period("M"))
-meses_buenos = set(datos.loc[datos["regimen"] == "meses buenos", "mes"].dt.to_period("M"))
-
 ancho = (
     spark.table(f"{SILVER}.returns")
     .groupBy("date").pivot("ticker").agg(F.first("log_return"))
     .orderBy("date").toPandas().set_index("date")
 ).dropna(axis=1, how="any")
 ancho.index = pd.to_datetime(ancho.index)
-periodos = ancho.index.to_period("M")
 
 CANDIDATOS = ["JPM", "AAPL", "JNJ", "XOM", "PG", "NEE", "AMT", "LIN", "UNP", "VZ"]
 cartera = [t for t in CANDIDATOS if t in ancho.columns]
-w = np.full(len(cartera), 1 / len(cartera))
+
+# Los regímenes van indexados por periodo mensual, que es como los espera
+# regime_comparison para cruzarlos con las fechas diarias.
+regimenes = pd.Series(
+    datos["regimen"].values,
+    index=pd.PeriodIndex(datos["mes"], freq="M"),
+)
+
+tabla_regimen = regime_comparison(ancho, regimenes, cartera)
 
 print(f"Portafolio de prueba: {len(cartera)} acciones de sectores distintos, pesos iguales")
 print()
-print(f"{'régimen':20} {'meses':>7} {'vol portafolio':>16} {'vol individual':>16} {'ratio divers.':>14}")
+print(f"{'régimen':20} {'días':>7} {'vol portafolio':>16} {'vol individual':>16} {'ratio divers.':>14}")
 print("-" * 78)
-
-for nombre, conjunto in [
-    ("todo el periodo", set(periodos)),
-    ("solo meses buenos", meses_buenos),
-    ("solo meses malos", meses_malos),
-]:
-    sub = ancho.loc[periodos.isin(conjunto), cartera].to_numpy(np.float64)
-    sigma = np.cov(sub, rowvar=False) * DIAS_HABILES
-    vol = float(np.sqrt(w @ sigma @ w))
-    vol_ind = float(w @ np.sqrt(np.diag(sigma)))
-    print(f"{nombre:20} {len(sub) // 21:>7} {100 * vol:>15.2f}% "
-          f"{100 * vol_ind:>15.2f}% {vol_ind / vol:>14.2f}")
+for _, f in tabla_regimen.iterrows():
+    print(f"{f['regimen']:20} {int(f['dias']):>7} {100 * f['vol_portafolio']:>15.2f}% "
+          f"{100 * f['vol_individual']:>15.2f}% {f['ratio_diversificacion']:>14.2f}")
 
 print()
 print("La columna que importa es la última. Si el ratio de diversificación baja")
