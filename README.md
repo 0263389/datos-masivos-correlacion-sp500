@@ -394,10 +394,10 @@ El Entregable 2 se desvió del plan original en dos puntos, y conviene decir por
 
 | Nombre | Responsabilidad |
 |---|---|
-| Franco Rissotto | Extracción y configuración (`src/data.py`, `src/config.py`) |
+| Franco Rissotto | Extracción y configuración (`src/data.py`, `src/config.py`); data lake y motor de riesgo (`databricks/`, `src/risk.py`, `tests/`) |
 | Miguel Herrera | Diagnóstico de calidad (`src/quality.py`) |
 | Octavio de la Mora | Rendimientos y correlación (`src/returns.py`, `src/analysis.py`) |
-| Paolo del Valle | Documentación (`README.md`) |
+| Paolo del Valle | Documentación (`README.md`, `docs/`) |
 
 ---
 
@@ -413,7 +413,7 @@ Reglas de trabajo en equipo para evitar conflictos y archivos rotos.
 | `src/quality.py` | Miguel Herrera |
 | `src/returns.py`, `src/analysis.py` | Octavio de la Mora |
 | `README.md`, `docs/` | Paolo del Valle |
-| `src/risk.py`, `tests/`, `databricks/` | _(por asignar — Entregable 2)_ |
+| `src/risk.py`, `tests/`, `databricks/` | Franco Rissotto |
 
 No edites un archivo que no es tuyo. Si necesitas un cambio ahí, pídeselo a quien es dueño.
 
