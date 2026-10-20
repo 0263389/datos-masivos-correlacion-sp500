@@ -79,9 +79,20 @@ factor_mercado = (
     )
 )
 
-# cache() porque este DataFrame se usa en varios joins mas adelante. Sin el,
-# Spark recalcularia el promedio de 3.5 millones de filas cada vez.
-factor_mercado.cache()
+# El factor se usa en varios joins mas adelante, asi que conviene no
+# recalcularlo cada vez. La forma obvia seria .cache(), pero **el compute
+# serverless no lo permite**: devuelve NOT_SUPPORTED_WITH_SERVERLESS, porque
+# cachear reserva memoria en un cluster fijo y serverless no asigna uno.
+#
+# La alternativa es mejor que el parche: materializarlo como tabla Delta. El
+# resultado queda guardado en el lake en lugar de en la memoria de una sesion,
+# asi que sobrevive al notebook y lo pueden leer las demas capas.
+(
+    factor_mercado.write.mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(f"{GOLD}.market_factor")
+)
+factor_mercado = spark.table(f"{GOLD}.market_factor")
 
 print(f"días del factor: {factor_mercado.count():,}")
 display(factor_mercado.orderBy(F.desc("date")).limit(5))
@@ -146,10 +157,11 @@ betas = (
     .withColumn("r2", F.pow("corr_mercado", 2))
 )
 
-betas.cache()
+# Misma razon que arriba: en lugar de cache(), se escribe y se vuelve a leer.
 betas.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{GOLD}.market_factor_betas"
 )
+betas = spark.table(f"{GOLD}.market_factor_betas")
 
 print(f"{betas.count():,} tickers con beta y R² calculados")
 
@@ -349,19 +361,27 @@ print("el vínculo sectorial que sobrevive después de quitar el mercado.")
 
 # COMMAND ----------
 
+# Delta no deja sobrescribir una tabla mientras se lee de ella misma, asi que
+# el resumen por tamanio va a su propia tabla en lugar de anexarse a los betas.
 (
-    betas.join(
-        spark.createDataFrame(
-            [(f["cap_tier"], float(f["corr_con_su_sector"])) for f in efecto_sector],
-            ["cap_tier", "corr_sector_tier"],
-        ),
-        on="cap_tier", how="left",
+    spark.createDataFrame(
+        [
+            (
+                f["cap_tier"],
+                int(f["observaciones"]),
+                float(f["corr_con_mercado"]),
+                float(f["corr_con_su_sector"]),
+            )
+            for f in efecto_sector
+        ],
+        ["cap_tier", "observaciones", "corr_con_mercado", "corr_con_su_sector"],
     )
     .write.mode("overwrite").option("overwriteSchema", "true")
-    .saveAsTable(f"{GOLD}.market_factor_betas")
+    .saveAsTable(f"{GOLD}.sector_effect_by_tier")
 )
 
-for tabla in ["market_factor_betas", "residual_returns"]:
+for tabla in ["market_factor", "market_factor_betas",
+              "residual_returns", "sector_effect_by_tier"]:
     print(f"  {tabla:22} {spark.table(f'{GOLD}.{tabla}').count():>12,} filas")
 
 # COMMAND ----------
