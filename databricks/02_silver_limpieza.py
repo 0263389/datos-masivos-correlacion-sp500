@@ -35,9 +35,24 @@ SILVER = f"{CATALOGO}.silver"
 # split mal aplicado por la fuente, no un evento real.
 UMBRAL_EXTREMO = 0.50
 
-# Una empresa real tiene a lo mucho uno o dos movimientos de esa magnitud en
-# once anios. Mas que eso no es volatilidad, es un dato mal medido.
-MAX_EVENTOS_EXTREMOS = 2
+# Un movimiento extremo se considera artificio si el precio REGRESA a su
+# nivel previo en los dias siguientes. Un split mal aplicado se deshace; un
+# desplome real no.
+#
+# Esta fue una correccion importante. La primera version del criterio contaba
+# solo la FRECUENCIA de movimientos extremos y excluia cualquier ticker con
+# mas de dos. Sobre el S&P 500 funcionaba, pero sobre el 1500 empezo a
+# descartar eventos reales: GameStop con 9 movimientos de +/-50% no es un dato
+# roto, es el short squeeze de enero de 2021. Lo mismo CleanSpark y MARA
+# (mineras de bitcoin) o TG Therapeutics (biotecnologica: salta con cada
+# resultado de ensayo clinico).
+#
+# El sesgo no era menor: excluir a las small caps mas volatiles contamina
+# justo la pregunta de este entregable, porque son las empresas cuyo
+# comportamiento frente al mercado queremos medir.
+TOLERANCIA_REVERSION = 0.15  # 15% de diferencia cuenta como "volvio"
+DIAS_PARA_REVERTIR = 3       # margen: MNST tardaba hasta 3 dias en rebotar
+MAX_REVERSIONES = 1          # mas de una reversion ya es patron, no accidente
 
 # Dias consecutivos sin que el precio cambie ni un centavo. Imposible para una
 # accion de indice: o esta suspendida, o la fuente repite el ultimo dato.
@@ -117,12 +132,42 @@ historia = con_rendimiento.groupBy("ticker").agg(
     F.max("date").alias("ultima_fecha"),
 )
 
-# Eventos extremos: cuantos dias de +/-50% tiene cada ticker
-extremos = (
+# Movimientos extremos, separados en dos clases segun si se deshacen o no.
+#
+# F.lead mira hacia ADELANTE en la misma ventana, igual que F.lag mira hacia
+# atras. Se revisan los tres dias siguientes porque la reversion no siempre
+# es inmediata.
+marcados = (
     con_rendimiento
-    .withColumn("es_extremo", (F.abs("log_return") > UMBRAL_EXTREMO).cast("int"))
-    .groupBy("ticker")
-    .agg(F.sum("es_extremo").alias("n_eventos_extremos"))
+    .withColumn("es_extremo", F.abs("log_return") > UMBRAL_EXTREMO)
+    .withColumn("close_d1", F.lead("close", 1).over(ventana))
+    .withColumn("close_d2", F.lead("close", 2).over(ventana))
+    .withColumn("close_d3", F.lead("close", 3).over(ventana))
+)
+
+# "Volvio" = alguno de los tres dias siguientes esta a menos de 15% del precio
+# que habia ANTES del movimiento extremo.
+def _volvio(col_futuro: str):
+    return (
+        F.abs(F.col(col_futuro) / F.col("prev_close") - 1) < TOLERANCIA_REVERSION
+    )
+
+marcados = marcados.withColumn(
+    "se_revirtio",
+    F.col("es_extremo")
+    & (_volvio("close_d1") | _volvio("close_d2") | _volvio("close_d3")),
+)
+
+extremos = (
+    marcados.groupBy("ticker").agg(
+        F.sum(F.col("es_extremo").cast("int")).alias("n_eventos_extremos"),
+        F.sum(F.col("se_revirtio").cast("int")).alias("n_reversiones"),
+    )
+    # Un movimiento extremo que NO se revirtio es un evento real del mercado.
+    .withColumn(
+        "n_extremos_reales",
+        F.col("n_eventos_extremos") - F.col("n_reversiones"),
+    )
 )
 
 # COMMAND ----------
@@ -185,12 +230,13 @@ reporte = (
         constituyentes.select("ticker", "company", "sector", "cap_tier"),
         on="ticker", how="left",
     )
-    .fillna({"n_eventos_extremos": 0, "dias_estancado": 0})
+    .fillna({"n_eventos_extremos": 0, "n_reversiones": 0,
+             "n_extremos_reales": 0, "dias_estancado": 0})
 )
 
 reporte = reporte.withColumn(
     "motivo_exclusion",
-    F.when(F.col("n_eventos_extremos") > MAX_EVENTOS_EXTREMOS, "datos_corruptos")
+    F.when(F.col("n_reversiones") > MAX_REVERSIONES, "datos_corruptos")
      .when(F.col("dias_estancado") >= DIAS_ESTANCADO, "precio_estancado")
      .otherwise(F.lit(None)),
 )
@@ -212,14 +258,28 @@ print("TICKERS EXCLUIDOS POR DATOS CORRUPTOS O PRECIO ESTANCADO")
 detalle = (
     reporte.filter(F.col("motivo_exclusion").isNotNull())
     .select("ticker", "company", "cap_tier", "n_eventos_extremos",
-            "dias_estancado", "motivo_exclusion")
-    .orderBy(F.desc("dias_estancado"), F.desc("n_eventos_extremos"))
+            "n_reversiones", "dias_estancado", "motivo_exclusion")
+    .orderBy(F.desc("n_reversiones"), F.desc("dias_estancado"))
     .limit(20).collect()
 )
 for f in detalle:
     print(f"  {f['ticker']:7} {str(f['company'])[:26]:28} {f['cap_tier']:6} "
-          f"extremos={f['n_eventos_extremos']:<3} estancado={f['dias_estancado']:<4} "
-          f"{f['motivo_exclusion']}")
+          f"extremos={f['n_eventos_extremos']:<3} revertidos={f['n_reversiones']:<3} "
+          f"estancado={f['dias_estancado']:<4} {f['motivo_exclusion']}")
+
+print()
+print("VOLATILES PERO VALIDOS: movimientos extremos que NO se revirtieron")
+print("(antes se excluian por error; son eventos reales del mercado)")
+reales = (
+    reporte.filter(
+        (F.col("n_extremos_reales") >= 3) & F.col("motivo_exclusion").isNull()
+    )
+    .select("ticker", "company", "cap_tier", "n_extremos_reales")
+    .orderBy(F.desc("n_extremos_reales")).limit(12).collect()
+)
+for f in reales:
+    print(f"  {f['ticker']:7} {str(f['company'])[:30]:32} {f['cap_tier']:6} "
+          f"{f['n_extremos_reales']} eventos reales")
 
 # COMMAND ----------
 
