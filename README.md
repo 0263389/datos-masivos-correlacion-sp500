@@ -6,7 +6,9 @@ semestre
 Motor de análisis de estructura de correlación y riesgo para los componentes del S&P 500,
 inspirado en la capa analítica de plataformas de gestión de riesgo como Aladdin (BlackRock).
 
-**Entregable 1** — Definición del problema, fuentes de datos y repositorio reproducible
+**Entregable 1** ✅ — Definición del problema, fuentes de datos y repositorio reproducible
+**Entregable 2** ✅ — Data lake en Databricks, universo ampliado y motor de riesgo
+([detalle](docs/ENTREGABLE_2.md))
 
 ---
 
@@ -20,14 +22,14 @@ Con 500 acciones hay **más de 124,000 pares** que evaluar, y el número crece c
 universo. Medir esa estructura de co-movimiento, y entender de dónde viene, es el problema central
 de la gestión de riesgo cuantitativa.
 
-### Pregunta de este entregable
+### La pregunta del Entregable 1
 
 > **¿Las acciones del mismo sector GICS están más correlacionadas entre sí que con acciones de
 > otros sectores, y qué tan grande es esa diferencia?**
 
 ---
 
-## Hallazgos
+## Hallazgos del Entregable 1
 
 **Sí, y la diferencia es sustancial.**
 
@@ -59,6 +61,35 @@ Separarlos es el objetivo del Entregable 2.
 
 ---
 
+## Hallazgos del Entregable 2
+
+El detalle completo está en **[`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md)**. Lo esencial:
+
+**La correlación de 0.316 entre sectores distintos era el factor de mercado.** Al separarlo, el
+vínculo sectorial sobrevive entre 0.30 y 0.38: era real, no un reflejo del movimiento común.
+
+**Las empresas chicas no dependen menos del mercado — reaccionan más.**
+
+| Tamaño | Empresas | Beta | R² |
+|---|---|---|---|
+| Large | 455 | 0.859 | 0.323 |
+| Mid | 317 | 1.060 | 0.359 |
+| Small | 439 | **1.102** | 0.319 |
+
+El R² es casi idéntico, pero el beta crece conforme baja el tamaño.
+
+**Diez posiciones no son diez apuestas.** Diez bancos en partes iguales tienen 27.4% de
+volatilidad; diez sectores distintos, 15.6%. Mismo número de posiciones, **43% menos riesgo**.
+
+**La diversificación se rompe con la turbulencia, no con las caídas.** La cohesión del mercado
+correlaciona +0.755 con la volatilidad del mes y solo −0.259 con su rendimiento. Pánico y euforia
+mueven todo junto por igual.
+
+**Un motor calibrado con toda la historia subestima el riesgo en 29% durante las crisis**, que es
+justo cuando alguien lo consulta.
+
+---
+
 ## Fuentes de datos
 
 Tres fuentes, **todas obtenidas mediante código**: dos por API/librería y una por scraping.
@@ -69,7 +100,16 @@ Tres fuentes, **todas obtenidas mediante código**: dos por API/librería y una 
 | 2 | [Wikipedia — S&P 500](https://en.wikipedia.org/wiki/List_of_S%26P_500_companies) | Scraping (`requests` + `read_html`) | Ticker, empresa, sector GICS, sub-industria | Composición actual | HTML → DataFrame → Parquet |
 | 3 | [FRED](https://fred.stlouisfed.org/) (Fed de St. Louis) | API REST con llave | VIX, tasa del Tesoro a 10 años | 2015-01 → actual | JSON → DataFrame → Parquet |
 
-**Volumen procesado:** 2,934 días × 503 tickers ≈ **1.48 millones de observaciones** de precio.
+**Volumen procesado:**
+
+| | Universo | Observaciones |
+|---|---|---|
+| Entregable 1 | S&P 500 (503 tickers) | 1.48 millones |
+| Entregable 2 | **S&P Composite 1500** (1,503 tickers) | **4.1 millones** |
+
+El Entregable 2 amplía a los tres índices por capitalización (500 large + 400 mid + 600 small)
+reutilizando el mismo scraping. La columna nueva `cap_tier` es la que habilita preguntar si el
+tamaño de la empresa cambia su relación con el mercado.
 
 ---
 
@@ -137,6 +177,31 @@ Si `python3` apunta a una versión vieja, reemplázalo por la versión que insta
 API: `data/processed/` incluye un respaldo comprimido de los datos, y el código lo usa
 automáticamente si la descarga en vivo falla.
 
+### Entregable 2: el data lake en Databricks
+
+El Entregable 1 corre completo en tu máquina. El Entregable 2 vive en Databricks, porque los datos
+son tablas Delta en Unity Catalog.
+
+**1.** Crea una cuenta gratuita en [Databricks Free Edition](https://www.databricks.com/learn/free-edition).
+
+**2.** Conecta tu cuenta de GitHub: *tu perfil → Settings → Linked accounts → GitHub*.
+
+**3.** Trae el repositorio: *Workspace → Create → Git folder*, con la URL de este repositorio.
+
+**4.** Corre los notebooks de `databricks/` **en orden**, del 01 al 06. Cada capa depende de la
+anterior.
+
+> ⚠️ **Elige *General compute → Serverless***, no un SQL warehouse. Un warehouse solo ejecuta
+> celdas SQL y las de Python fallan.
+
+Para correr las pruebas del motor de riesgo, que no necesitan Spark ni Databricks:
+
+```bash
+./.venv/bin/python -m pytest tests/ -v
+```
+
+---
+
 ### Opcional: datos macro frescos de FRED
 
 FRED requiere una llave gratuita. Sin ella el notebook funciona igual (avisa y continúa).
@@ -170,13 +235,29 @@ datos-masivos-correlacion-sp500/
 │
 ├── src/                          Código reutilizable
 │   ├── config.py                 Rutas portables y parámetros del análisis
-│   ├── data.py                   Extracción: Yahoo, Wikipedia, FRED
+│   ├── data.py                   Extracción: Yahoo, Wikipedia, FRED, S&P 1500
 │   ├── quality.py                Diagnóstico: nulos, duplicados, datos corruptos
 │   ├── returns.py                Precios → panel balanceado → rendimientos log
-│   └── analysis.py               Correlación y agregación por sector
+│   ├── analysis.py               Correlación y agregación por sector
+│   └── risk.py                   Covarianza, shrinkage y descomposición del riesgo
 │
-├── notebooks/
-│   └── 01_entregable1.ipynb      Análisis completo con narrativa
+├── tests/
+│   └── test_risk.py              25 pruebas del motor de riesgo
+│
+├── notebooks/                    Entregable 1 — análisis local con pandas
+│   └── 01_entregable1.ipynb
+│
+├── databricks/                   Entregable 2 — data lake y análisis con Spark
+│   ├── 01_bronze_ingesta.py      Las 3 fuentes → tablas Delta crudas
+│   ├── 02_silver_limpieza.py     Auditoría y rendimientos (window functions)
+│   ├── 03_gold_analisis.py       Factor de mercado, betas, residuales
+│   ├── 04_benchmark_pandas_vs_spark.py
+│   ├── 05_motor_de_riesgo.py     Descomposición del riesgo de portafolio
+│   └── 06_regimenes_de_crisis.py Cohesión del mercado en el tiempo
+│
+├── docs/
+│   ├── ENTREGABLE_2.md           Narrativa y hallazgos del Entregable 2
+│   └── GLOSARIO.md               Términos técnicos en español llano
 │
 ├── data/
 │   ├── raw/                      Caché de trabajo (ignorado por git)
@@ -184,6 +265,10 @@ datos-masivos-correlacion-sp500/
 │
 └── figures/                      Gráficas exportadas
 ```
+
+> Los datos del Entregable 2 **no están en el repositorio**: viven como tablas Delta en Unity
+> Catalog y se reconstruyen corriendo `databricks/01_bronze_ingesta`. Ese es justamente el punto de
+> tener un data lake — dejamos de versionar datos.
 
 ### Por qué la lógica vive en `src/` y no en el notebook
 
@@ -194,8 +279,13 @@ consecuencias prácticas:
 2. **Cuatro personas pueden trabajar en paralelo.** Los archivos `.py` son texto plano y Git los
    fusiona sin problema. Un `.ipynb` es un JSON gigante donde cualquier ejecución cambia miles de
    líneas y genera conflictos irresolubles.
-3. **El proyecto es acumulativo.** El Entregable 2 agrega `src/factors.py` sin tocar nada de lo
+3. **El proyecto es acumulativo.** El Entregable 2 agregó `src/risk.py` sin tocar nada de lo
    existente.
+
+El Entregable 2 estuvo a punto de romper este principio: toda la matemática del motor de riesgo
+quedó al inicio dentro de los notebooks de Databricks, dejando `src/` huérfano. Se refactorizó a
+`src/risk.py` con pruebas, y los notebooks lo importan localizando la raíz del repositorio sin
+rutas escritas a mano.
 
 ---
 
@@ -221,6 +311,12 @@ uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conserva
 `PCG` (bancarrota de PG&E, 2019), `APA`/`OXY`/`TRGP` (guerra de precios del petróleo, marzo 2020),
 `GL` (reporte de vendedores en corto, 2024).
 
+> **Este criterio se corrigió en el Entregable 2.** Calibrado sobre el S&P 500 funcionaba, pero al
+> ampliar a 1,500 empresas empezó a descartar eventos reales —`GME` y su *short squeeze* de 2021,
+> mineras de bitcoin, biotecnológicas—. El criterio nuevo distingue por **reversión** y no por
+> frecuencia: un split mal aplicado se deshace, un desplome real no.
+> Ver [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#problemas-de-calidad-encontrados).
+
 ---
 
 ## Limitaciones
@@ -234,16 +330,28 @@ uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conserva
 | **Correlación ≠ causalidad** | El co-movimiento puede deberse a un tercer factor común |
 | **Clases de acción duplicadas** | `GOOG`/`GOOGL` y `NWS`/`NWSA` son la misma empresa e inflan el extremo superior |
 
+Las limitaciones propias del Entregable 2 —sesgo de supervivencia agravado en small caps, beta
+medido contra un índice de igual ponderación, y una sola matriz de covarianza para once años— están
+en [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#limitaciones).
+
 ---
 
 ## Hacia dónde va el proyecto
 
-| Entregable | Qué se agrega | Módulo nuevo |
+| Entregable | Qué se agregó | Dónde quedó |
 |---|---|---|
-| **1** ✅ | Extracción, diagnóstico, correlación por sector | `data`, `quality`, `returns`, `analysis` |
-| **2** | PCA y modelo de factores: separar el mercado del vínculo real entre empresas | `factors.py` |
-| **3** | Red de correlación: clustering jerárquico, árbol de expansión mínima, correlación móvil vs. VIX | `network.py` |
-| **4** | Capa de riesgo: covarianza con shrinkage, contribución al riesgo, universo ampliado con Parquet/DuckDB | `risk.py` |
+| **1** ✅ | Extracción, diagnóstico, correlación por sector | `src/data.py`, `quality.py`, `returns.py`, `analysis.py` |
+| **2** ✅ | Data lake medallion, universo ampliado a 1,500, factor de mercado, motor de riesgo | `databricks/01` a `06`, `src/risk.py` |
+| **3** | Escenarios de estrés con correlaciones de crisis, y la red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) | `src/network.py` |
+
+El Entregable 2 se desvió del plan original en dos puntos, y conviene decir por qué:
+
+- Se usó el **promedio de igual ponderación** en lugar de PCA como factor de mercado. En la
+  práctica son casi idénticos —el primer componente principal tiene todos los pesos del mismo signo
+  y parecidos entre sí— pero el promedio se obtiene con un `groupBy` sobre la fecha en vez de una
+  covarianza de 1,200×1,200.
+- La **capa de riesgo se adelantó** del Entregable 4 al 2, porque es lo que convierte el proyecto
+  de un análisis en una herramienta.
 
 ---
 
@@ -270,6 +378,7 @@ Reglas de trabajo en equipo para evitar conflictos y archivos rotos.
 | `src/quality.py` | Miguel Herrera |
 | `src/returns.py`, `src/analysis.py` | Octavio de la Mora |
 | `README.md`, `docs/` | Paolo del Valle |
+| `src/risk.py`, `tests/`, `databricks/` | _(por asignar — Entregable 2)_ |
 
 No edites un archivo que no es tuyo. Si necesitas un cambio ahí, pídeselo a quien es dueño.
 
