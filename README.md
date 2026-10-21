@@ -205,13 +205,43 @@ son tablas Delta en Unity Catalog.
 
 **2.** Conecta tu cuenta de GitHub: *tu perfil → Settings → Linked accounts → GitHub*.
 
-**3.** Trae el repositorio: *Workspace → Create → Git folder*, con la URL de este repositorio.
+**3.** Trae el repositorio: *Workspace → Create → Git folder*, y pega esta URL:
 
-**4.** Corre los notebooks de `databricks/` **en orden**, del 01 al 06. Cada capa depende de la
-anterior.
+```
+https://github.com/0263389/datos-masivos-correlacion-sp500.git
+```
+
+**4.** Abre los notebooks de la carpeta `databricks/` y córrelos **en orden**, del 01 al 06. Cada
+capa depende de la anterior, así que no saltes ninguno. Cada archivo `.py` se abre en Databricks como
+notebook; usa *Run all* para ejecutarlo completo.
+
+| # | Notebook | Qué necesita antes |
+|---|---|---|
+| 01 | `01_bronze_ingesta` | Nada. Descarga los datos y crea las tablas Bronze |
+| 02 | `02_silver_limpieza` | Haber terminado el 01 |
+| 03 | `03_gold_analisis` | Haber terminado el 02 |
+| 04 | `04_benchmark_pandas_vs_spark` | Haber terminado el 02 |
+| 05 | `05_motor_de_riesgo` | Haber terminado el 02 y el 03 |
+| 06 | `06_regimenes_de_crisis` | Haber terminado el 02 y el 03 |
 
 > ⚠️ **Elige *General compute → Serverless***, no un SQL warehouse. Un warehouse solo ejecuta
 > celdas SQL y las de Python fallan.
+
+> ⚠️ **Databricks modifica los archivos al ejecutarlos.** Después de correr un notebook, la carpeta
+> Git los muestra como modificados. Esos cambios **no son tuyos y no se deben guardar**: elige
+> **Discard changes** para descartarlos.
+>
+> **No uses *Commit & Push* desde Databricks.** Los notebooks se editan en VS Code y se suben desde
+> ahí, con el flujo de [Cómo contribuir](#cómo-contribuir). Databricks es solo para ejecutar.
+
+**Si el notebook 02 falla diciendo que no encuentra `workspace.bronze.prices`**, es que el 01 no
+terminó. Los resultados de cada capa quedan como tablas en los esquemas `bronze`, `silver` y `gold`
+del catálogo `workspace`.
+
+**Sobre la llave de FRED en Databricks.** El notebook 01 intenta leerla de un *secret* llamado
+`fred_api_key` (scope `proyecto`). Si no existe, avisa `Sin FRED_API_KEY` y **sigue sin crear la
+tabla `bronze.macro`**; ninguno de los notebooks 02 a 06 la necesita, así que no hay que
+configurarla para reproducir el Entregable 2.
 
 > **Sobre el formato de los notebooks de Databricks.** Se entregan como archivos `.py`
 > (*Databricks notebook source*), no como `.ipynb`. Eso significa que **no traen las salidas
@@ -229,11 +259,20 @@ anterior.
 > basta correr los notebooks en orden siguiendo las instrucciones de arriba.
 
 
-Para correr las pruebas del motor de riesgo, que no necesitan Spark ni Databricks:
+Para correr las pruebas del motor de riesgo, que no necesitan Spark ni Databricks (requieren haber
+hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 
 ```bash
 ./.venv/bin/python -m pytest tests/ -v
 ```
+
+Deben pasar las **25 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
+más rápidas.
+
+> Si ya tenías el entorno virtual de antes del Entregable 2, vuelve a correr
+> `./.venv/bin/python -m pip install -r requirements.txt` después de hacer `git pull`: se agregó
+> `pytest` a las dependencias.
 
 ---
 
