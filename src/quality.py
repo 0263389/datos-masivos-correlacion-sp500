@@ -10,9 +10,17 @@ devuelve numeros que parecen razonables.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
 from src import config
+
+if TYPE_CHECKING:
+    # Solo para las anotaciones de tipo. pyspark no esta en requirements.txt:
+    # importarlo aqui romperia este modulo en cualquier laptop sin Spark.
+    from pyspark.sql import DataFrame as SparkDataFrame
+    from pyspark.sql import SparkSession
 
 
 def structure_summary(prices: pd.DataFrame) -> pd.Series:
@@ -361,3 +369,124 @@ def detectar_precios_estancados(
         return pd.DataFrame(columns=columnas)
 
     return pd.DataFrame(filas).sort_values("dias_sin_moverse", ascending=False)
+
+
+def nulos_por_anio_spark(
+    spark: SparkSession, tabla: str = "workspace.bronze.prices"
+) -> SparkDataFrame:
+    """Version en PySpark de :func:`nulos_por_anio`, sobre la tabla de Bronze.
+
+    **En formato largo un faltante no es un nulo: es una fila que no existe.**
+    En la tabla ancha de pandas cada ticker tiene una celda para cada dia, y un
+    hueco se ve como ``NaN``. En ``bronze.prices`` (``date, ticker, close``) la
+    ingesta hace ``stack().dropna()``, asi que el dia sin precio simplemente no
+    tiene fila. No hay nada que contar con ``isNull``: hay que calcular cuantas
+    filas *deberia* haber y restar las que hay.
+
+    **La trampa esta en definir "cuantas deberia haber".** La forma intuitiva es
+    multiplicar los tickers *de cada anio* por los dias de ese anio. Falla de
+    forma silenciosa: una empresa que empezo a cotizar en 2019 no tiene ninguna
+    fila en 2015, asi que tampoco cuenta como esperada en 2015 y su hueco
+    desaparece. Medido sobre el panel del Entregable 1 convertido a formato
+    largo, ese calculo encuentra 5,156 faltantes en lugar de 54,479 y pierde el
+    descenso anio con anio, que era justo lo que habia que mostrar.
+
+    Lo correcto es reconstruir la rejilla completa que tendria la tabla ancha:
+    **todos los tickers del periodo por todos los dias de mercado**, con un
+    ``crossJoin``. Despues un ``left join`` contra los precios marca que celdas
+    tienen dato, y la primera y ultima fecha de cada ticker clasifican los
+    huecos igual que la version de pandas:
+
+    * ``previos_al_listado`` - antes de la primera cotizacion del ticker.
+    * ``posteriores_a_la_baja`` - despues de la ultima.
+    * ``huecos_internos`` - entre ambas: el unico tipo preocupante.
+
+    La rejilla tiene el tamanio de la tabla ancha (dias x tickers, unos 4.4
+    millones de celdas para el S&P 1500). Para este universo es trivial. Para
+    uno de decenas de miles de tickers convendria contar los dias de cada rango
+    en lugar de materializar cada celda.
+
+    Sobre los mismos datos devuelve exactamente lo mismo que
+    :func:`nulos_por_anio`, columna por columna.
+
+    Parameters
+    ----------
+    spark : sesion activa. En Databricks es la variable global ``spark``.
+    tabla : tabla en formato largo con, al menos, las columnas ``date``,
+        ``ticker`` y ``close``.
+
+    Returns
+    -------
+    DataFrame de Spark ordenado por anio con: anio, dias_de_mercado,
+    tickers_activos, esperadas, presentes, n_faltantes, prom_por_dia,
+    pct_faltantes, previos_al_listado, posteriores_a_la_baja, huecos_internos.
+    El universo son los tickers con al menos un precio en la tabla: los que
+    fallaron por completo en la descarga los reporta el notebook 01, no esta
+    funcion.
+    """
+    # Import local por la misma razon que el TYPE_CHECKING de arriba.
+    from pyspark.sql import functions as F
+
+    # Una fila con close nulo tampoco es un dato. Y si un lote se hubiera
+    # escrito dos veces, el dropDuplicates evita que el left join cuente doble.
+    presentes = (
+        spark.table(tabla)
+        .filter(F.col("close").isNotNull())
+        .select("date", "ticker")
+        .dropDuplicates(["date", "ticker"])
+        .withColumn("presente", F.lit(1))
+    )
+
+    calendario = (
+        presentes.select("date").distinct().withColumn("anio", F.year("date"))
+    )
+    limites = presentes.groupBy("ticker").agg(
+        F.min("date").alias("primera_fecha"),
+        F.max("date").alias("ultima_fecha"),
+    )
+
+    celdas = calendario.crossJoin(limites).join(
+        presentes, on=["date", "ticker"], how="left"
+    )
+
+    falta = F.col("presente").isNull()
+    antes = F.col("date") < F.col("primera_fecha")
+    despues = F.col("date") > F.col("ultima_fecha")
+
+    def _contar(condicion):
+        return F.sum(F.when(condicion, 1).otherwise(0))
+
+    reporte = celdas.groupBy("anio").agg(
+        F.countDistinct("date").alias("dias_de_mercado"),
+        F.countDistinct(F.when(~falta, F.col("ticker"))).alias("tickers_activos"),
+        F.count("*").alias("esperadas"),
+        F.count("presente").alias("presentes"),
+        _contar(falta & antes).alias("previos_al_listado"),
+        _contar(falta & despues).alias("posteriores_a_la_baja"),
+        _contar(falta & ~antes & ~despues).alias("huecos_internos"),
+    )
+
+    return (
+        reporte
+        .withColumn("n_faltantes", F.col("esperadas") - F.col("presentes"))
+        .withColumn(
+            "prom_por_dia", F.round(F.col("n_faltantes") / F.col("dias_de_mercado"), 1)
+        )
+        .withColumn(
+            "pct_faltantes", F.round(100 * F.col("n_faltantes") / F.col("esperadas"), 2)
+        )
+        .select(
+            "anio",
+            "dias_de_mercado",
+            "tickers_activos",
+            "esperadas",
+            "presentes",
+            "n_faltantes",
+            "prom_por_dia",
+            "pct_faltantes",
+            "previos_al_listado",
+            "posteriores_a_la_baja",
+            "huecos_internos",
+        )
+        .orderBy("anio")
+    )
