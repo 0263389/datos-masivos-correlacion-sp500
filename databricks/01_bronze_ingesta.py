@@ -129,8 +129,39 @@ def descargar_indice(url: str, cap_tier: str) -> pd.DataFrame:
     })
 
 
-partes = [descargar_indice(url, tier) for tier, url in INDICES.items()]
-constituyentes = pd.concat(partes, ignore_index=True)
+def _respaldo_del_repositorio() -> pd.DataFrame | None:
+    """Busca el respaldo de constituyentes dentro del Git folder.
+
+    El repositorio incluye `data/processed/sp1500_constituents.parquet` (38 KB)
+    justamente para este caso. Se localiza la raiz subiendo por el arbol de
+    carpetas, sin ninguna ruta escrita a mano.
+    """
+    from pathlib import Path
+
+    for candidato in [Path.cwd(), *Path.cwd().parents]:
+        ruta = candidato / "data" / "processed" / "sp1500_constituents.parquet"
+        if ruta.is_file():
+            return pd.read_parquet(ruta)
+    return None
+
+
+# Algunas cuentas de Databricks Free Edition no tienen salida a internet y la
+# descarga falla con NameResolutionError. El repositorio trae el respaldo para
+# que esta capa no dependa de eso. Los precios si requieren acceso a Yahoo; ver
+# la seccion "Acceso a internet desde Databricks" del README.
+try:
+    partes = [descargar_indice(url, tier) for tier, url in INDICES.items()]
+    constituyentes = pd.concat(partes, ignore_index=True)
+    print("Constituyentes descargados de Wikipedia.")
+except Exception as error:
+    print(f"No se pudo descargar de Wikipedia ({type(error).__name__}).")
+    constituyentes = _respaldo_del_repositorio()
+    if constituyentes is None:
+        raise RuntimeError(
+            "Falló la descarga y no se encontró el respaldo del repositorio. "
+            "Verifica que el notebook corra desde el Git folder."
+        ) from error
+    print(f"Se usa el respaldo del repositorio: {len(constituyentes)} tickers.")
 
 # Un ticker en dos índices a la vez se queda con el de mayor capitalización:
 # duplicarlo rompería el conteo de pares únicos más adelante.

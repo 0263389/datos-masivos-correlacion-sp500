@@ -276,6 +276,60 @@ más rápidas.
 
 ---
 
+### Acceso a internet desde Databricks
+
+El notebook `01_bronze_ingesta` descarga de Wikipedia, Yahoo Finance y FRED. **En algunas cuentas
+de Databricks Free Edition esas descargas fallan**, con un error de resolución de nombres:
+
+```
+NameResolutionError: Failed to resolve 'en.wikipedia.org'
+```
+
+No es un problema del código: el entorno no deja salir a internet. Lo encontró **Paolo del Valle**
+auditando estas instrucciones desde una cuenta recién creada.
+
+**No afecta a todas las cuentas.** En la cuenta donde se desarrolló el proyecto los cuatro destinos
+responden correctamente. No pudimos determinar qué distingue a una cuenta de otra — la
+documentación de Databricks menciona que Free Edition limita el tráfico saliente a una lista de
+dominios que no es pública y que puede variar por región.
+
+**Para saber en qué caso estás**, crea un notebook nuevo con cómputo *Serverless* y corre:
+
+```python
+import socket, requests
+
+HOSTS = {
+    "en.wikipedia.org":         "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    "query1.finance.yahoo.com": "https://query1.finance.yahoo.com/v8/finance/chart/AAPL",
+    "api.stlouisfed.org":       "https://api.stlouisfed.org/fred/series?series_id=VIXCLS",
+    "pypi.org":                 "https://pypi.org/simple/",
+}
+print(f"{'HOST':30} {'DNS':>8} {'HTTP':>8}")
+for host, url in HOSTS.items():
+    try:
+        socket.gethostbyname(host); dns = "OK"
+    except Exception:
+        dns = "FALLA"
+    try:
+        http = str(requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15).status_code)
+    except Exception as e:
+        http = type(e).__name__[:8]
+    print(f"{host:30} {dns:>8} {http:>8}")
+```
+
+`pypi.org` funciona como control: Databricks necesita llegar ahí para instalar librerías con
+`%pip`. Si ese sale `OK` y los demás fallan, el bloqueo es selectivo.
+
+**Si estás bloqueado:** la lista de empresas del S&P 1500 viaja en el repositorio
+(`data/processed/sp1500_constituents.parquet`) y el notebook la usa automáticamente cuando la
+descarga falla, así que esa parte funciona de todos modos. Los **precios** sí requieren acceso a
+Yahoo Finance y no hay forma de sortearlo sin subir 18 MB de datos al repositorio, cosa que iría en
+contra del planteamiento del entregable — los datos viven en el lake, no en Git.
+
+En ese caso, los resultados de las seis capas están documentados con sus cifras en
+[`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md).
+
+
 ### Opcional: datos macro frescos de FRED
 
 FRED requiere una llave gratuita. Sin ella el notebook funciona igual (avisa y continúa).
@@ -290,11 +344,15 @@ El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
 > `.env.example` también incluye `SEC_USER_AGENT`. Ningún módulo de `src/` lo usa todavía: está
 > reservado para un entregable futuro que consulte SEC EDGAR. Puedes dejarlo vacío por ahora.
 
-> ✅ **Verificado el 10 de septiembre de 2026** en macOS (Apple Silicon), clonando el repositorio
-> desde cero en una computadora que no tenía el proyecto instalado y siguiendo estos pasos al pie
-> de la letra. Con Python 3.9 y con Python 3.11 el paso 3 falla (`numpy==2.5.2` requiere Python
-> ≥3.12); con Python 3.12 el resto de los pasos funcionó sin ajustes: instalación de dependencias
-> y los cinco módulos de `src/` importan sin errores.
+> ✅ **Instalación local verificada el 10 de septiembre de 2026** en macOS (Apple Silicon),
+> clonando el repositorio desde cero en una computadora que no tenía el proyecto instalado y
+> siguiendo estos pasos al pie de la letra. Con Python 3.9 y con Python 3.11 el paso 3 falla
+> (`numpy==2.5.2` requiere Python ≥3.12); con Python 3.12 el resto de los pasos funcionó sin
+> ajustes: instalación de dependencias y los cinco módulos de `src/` importan sin errores.
+>
+> **El alcance de esta verificación es la instalación local**, es decir los pasos de esta sección.
+> La ruta de Databricks del Entregable 2 se verificó por separado y tiene una limitación conocida
+> que depende de la cuenta — ver [Acceso a internet desde Databricks](#acceso-a-internet-desde-databricks).
 
 ---
 
