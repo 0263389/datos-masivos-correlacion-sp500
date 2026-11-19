@@ -109,6 +109,67 @@ justo cuando alguien lo consulta.
 
 ---
 
+## Hallazgos del Entregable 3
+
+El profesor pidió cuatro cosas: medir relaciones **no lineales**, usar **cofactores**, encontrar
+el **punto óptimo de historia** con validación hacia adelante, **predecir volatilidad** con GARCH,
+y que el usuario **tenga dónde verlo**. Esto es lo que salió.
+
+**Un año de historia es el punto óptimo, y más historia empeora el resultado.** Simulando
+rebalanceos mes a mes sin que el modelo vea nunca el futuro:
+
+| Historia usada | Volatilidad real lograda | Rotación mensual |
+|---|---|---|
+| 125 días | 11.24% | 24.5% |
+| **250 días** | **11.19%** | 15.1% |
+| 1,000 días | 11.44% | 4.7% |
+| 2,000 días | 12.14% | 1.6% |
+
+La primera versión de esta prueba comparaba ventanas que medían **periodos distintos** —la de
+2,000 días arrancaba después del COVID— y daba la respuesta contraria. Darle a todas el mismo
+punto de arranque cambió la conclusión de 2,000 a 250 días.
+
+**El GARCH encuentra el COVID sin que nadie se lo diga.** Ajustado sobre AAPL, JPM, XOM, KO y
+NVDA, los parámetros caen en el rango de la literatura (α entre 0.054 y 0.127, β entre 0.794 y
+0.930) y el máximo histórico de volatilidad estimada cae **entre el 17 y el 27 de marzo de 2020**
+en las cinco. No hay ninguna variable "pandemia": lo encontró leyendo solo precios.
+
+Se reporta también lo que **no** logra: contra el estimador ingenuo —la volatilidad de los últimos
+10 días— gana en 3 de 5 acciones y por poco (0.678 contra 0.625 en XOM). Su ventaja real es el
+pronóstico a varios días, que el ingenuo no puede dar. Y subestima el pico del COVID, 91% contra
+114% realizado, porque supone errores normales y los mercados tienen colas más gordas.
+
+**La información mutua no encuentra relaciones curvas, y ese resultado negativo es el hallazgo.**
+La brecha promedio sobre 780 pares es 0.0028, por debajo del piso de resolución del propio método
+(0.0675, medido permutando series). Solo el 6.0% de los pares lo supera, cuando el 5% lo superaría
+por construcción. **La no linealidad de este mercado no está en la forma de la relación entre dos
+acciones.**
+
+**Está en las colas.** La probabilidad de que dos acciones estén juntas en su peor 10% es 29.9%,
+contra 26.8% de estar juntas en su mejor 10% —por azar serían 10% ambas— y pasa en el **84.5% de
+los pares**. Es algo que un solo coeficiente de correlación no puede expresar, porque es el mismo
+número para toda la nube de puntos.
+
+**Y en el régimen: las betas convergen hacia 1 en las crisis.** Con el modelo de cofactor
+`r = α + β·r_mercado + γ·(r_mercado × tensión)`, donde γ es el escalón y la tensión la define el
+GARCH, el **51.6%** de las 457 acciones tiene γ significativa. El patrón por quintil es monótono:
+
+| Quintil de beta en calma | Calma | Tensión | γ |
+|---|---|---|---|
+| 1 (más defensivas) | 0.501 | 0.703 | **+0.202** |
+| 3 | 1.014 | 0.999 | −0.014 |
+| 5 (más agresivas) | 1.479 | 1.326 | **−0.153** |
+
+`corr(beta_calma, γ) = −0.566` y la dispersión de betas cae 17%. **Utilities pasa de 0.479 a
+0.779, con el 93% de sus acciones significativas: el sector más defensivo es el que más
+defensividad pierde**, justo cuando se necesita que la conserve.
+
+La γ promedio es exactamente cero, y eso es una **identidad, no un resultado**: el mercado se
+define como el promedio de estas mismas acciones, así que la beta promedio contra él vale 1 en
+cualquier submuestra. El agregado no puede revelar nada; toda la información está en la dispersión.
+
+---
+
 ## Fuentes de datos
 
 Tres fuentes, **todas obtenidas mediante código**: dos por API/librería y una por scraping.
@@ -354,6 +415,33 @@ El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
 > La ruta de Databricks del Entregable 2 se verificó por separado y tiene una limitación conocida
 > que depende de la cuenta — ver [Acceso a internet desde Databricks](#acceso-a-internet-desde-databricks).
 
+**Abrir el tablero**
+
+El Entregable 3 incluye un tablero local que recorre todo el proyecto: una página por pregunta,
+con el número a la vista y la explicación de cómo se llegó a él.
+
+```bash
+.venv/bin/streamlit run dashboard/app.py
+```
+
+Se abre solo en `http://localhost:8501`. No necesita internet: lee los precios que ya están en
+`data/`. La primera carga tarda unos segundos porque ajusta el GARCH del mercado; después queda
+memorizado y la navegación es inmediata.
+
+El control **Activos en el universo** de la barra lateral cambia el tamaño de la muestra. Los
+pares crecen con el cuadrado —40 activos son 780 pares, 120 son 7,140— así que súbelo para tener
+más evidencia y bájalo si quieres que responda más rápido.
+
+**Correr las pruebas**
+
+```bash
+.venv/bin/python -m pytest tests/ -q
+```
+
+Son 111 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
+que se sabe de antemano, no hay razón para creerle sobre datos reales.
+
 ---
 
 ## Estructura del repositorio
@@ -371,10 +459,22 @@ datos-masivos-correlacion-sp500/
 │   ├── quality.py                Diagnóstico: nulos, duplicados, datos corruptos
 │   ├── returns.py                Precios → panel balanceado → rendimientos log
 │   ├── analysis.py               Correlación y agregación por sector
-│   └── risk.py                   Covarianza, shrinkage y descomposición del riesgo
+│   ├── risk.py                   Covarianza, shrinkage y descomposición del riesgo
+│   ├── validation.py             Validación hacia adelante: cuánta historia usar
+│   ├── volatility.py             GARCH(1,1): predicción de volatilidad
+│   ├── nonlinear.py              Información mutua y dependencia de cola
+│   └── cofactors.py              Betas que cambian con el régimen
 │
-├── tests/
-│   └── test_risk.py              25 pruebas del motor de riesgo
+├── dashboard/                    Tablero local (Streamlit)
+│   ├── app.py                    Siete páginas, una por pregunta del proyecto
+│   └── datos.py                  Carga y memorización de los cálculos caros
+│
+├── tests/                        111 pruebas
+│   ├── test_risk.py              Motor de riesgo
+│   ├── test_validation.py        Validación hacia adelante
+│   ├── test_volatility.py        GARCH
+│   ├── test_nonlinear.py         Dependencia no lineal
+│   └── test_cofactors.py         Cofactores
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas
 │   └── 01_entregable1.ipynb
@@ -474,7 +574,8 @@ en [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#limitaciones).
 |---|---|---|
 | **1** ✅ | Extracción, diagnóstico, correlación por sector | `src/data.py`, `quality.py`, `returns.py`, `analysis.py` |
 | **2** ✅ | Data lake medallion, universo ampliado a 1,500, factor de mercado, motor de riesgo | `databricks/01` a `06`, `src/risk.py` |
-| **3** | Escenarios de estrés con correlaciones de crisis, y la red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) | `src/network.py` |
+| **3** ✅ | Validación hacia adelante, GARCH, relaciones no lineales, cofactores y tablero local | `src/validation.py`, `volatility.py`, `nonlinear.py`, `cofactors.py`, `dashboard/` |
+| **4** | Escenarios de estrés usando las betas de régimen ya estimadas, y la red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) | `src/network.py` |
 
 El Entregable 2 se desvió del plan original en dos puntos, y conviene decir por qué:
 

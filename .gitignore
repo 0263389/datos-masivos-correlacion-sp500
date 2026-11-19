@@ -22,3 +22,6 @@ data/raw/*
 
 # ---- macOS ----
 .DS_Store
+
+# ---- Streamlit ----
+.streamlit/secrets.toml
