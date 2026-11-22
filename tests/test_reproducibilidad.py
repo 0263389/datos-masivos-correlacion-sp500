@@ -184,3 +184,61 @@ class TestCifrasDelEntregable3:
         tension = tension_por_volatilidad(m, parametros=par)
         assert tension.mean() == pytest.approx(0.20, abs=0.01)
         assert m[tension].std() > 2 * m[~tension].std()
+
+
+@sin_datos
+class TestModoSinRed:
+    """La bandera que vuelve deterministas estas pruebas.
+
+    Sin ella, una maquina sin cache -la de integracion continua, o la de un
+    companiero que acaba de clonar- descargaria precios frescos y obtendria un
+    panel distinto al que las cifras publicadas describen. Las pruebas de
+    arriba fallarian, pero por la razon equivocada.
+    """
+
+    def test_la_bandera_se_lee_del_entorno(self, monkeypatch):
+        import importlib
+
+        from src import config as cfg
+
+        for valor, esperado in [("1", True), ("true", True), ("SI", True),
+                                ("0", False), ("", False), ("no", False)]:
+            monkeypatch.setenv("SP500_SOLO_RESPALDO", valor)
+            assert importlib.reload(cfg).SOLO_RESPALDO is esperado, f"con {valor!r}"
+
+        monkeypatch.delenv("SP500_SOLO_RESPALDO", raising=False)
+        importlib.reload(cfg)
+
+    def test_sin_cache_usa_el_respaldo_y_no_descarga(self, monkeypatch, tmp_path):
+        """Prueba central: con la bandera activa, la descarga ni se intenta.
+
+        Se simula una maquina recien clonada apuntando el cache a una ruta que
+        no existe, y se sustituye la descarga por una funcion que falla si
+        alguien la llama.
+        """
+        from src import data as modulo_data
+
+        def no_debe_llamarse():
+            raise AssertionError("se intentó descargar teniendo la bandera activa")
+
+        monkeypatch.setattr(modulo_data.config, "SOLO_RESPALDO", True)
+        frame = modulo_data._load_with_fallback(
+            cache=tmp_path / "no_existe.parquet",
+            fallback=config.PRICES_FALLBACK,
+            download=no_debe_llamarse,
+            label="prueba",
+        )
+        assert not frame.empty
+        assert frame.shape[1] > 400
+
+    def test_sin_respaldo_el_error_dice_que_hacer(self, monkeypatch, tmp_path):
+        from src import data as modulo_data
+
+        monkeypatch.setattr(modulo_data.config, "SOLO_RESPALDO", True)
+        with pytest.raises(RuntimeError, match="SP500_SOLO_RESPALDO"):
+            modulo_data._load_with_fallback(
+                cache=tmp_path / "no_existe.parquet",
+                fallback=tmp_path / "tampoco_existe.parquet",
+                download=lambda: None,
+                label="prueba",
+            )

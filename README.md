@@ -3,6 +3,8 @@ semestre
 
 # Correlación entre acciones del S&P 500
 
+[![pruebas](https://github.com/0263389/datos-masivos-correlacion-sp500/actions/workflows/pruebas.yml/badge.svg)](https://github.com/0263389/datos-masivos-correlacion-sp500/actions/workflows/pruebas.yml)
+
 Motor de análisis de estructura de correlación y riesgo para los componentes del S&P 500,
 inspirado en la capa analítica de plataformas de gestión de riesgo como Aladdin (BlackRock).
 
@@ -495,9 +497,22 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-Son 157 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 178 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
+
+**Modo reproducible sin red.** La capa de datos intenta descargar en vivo cuando no encuentra
+caché, lo cual está bien en una laptop y mal en cualquier sitio donde el resultado deba ser
+idéntico: traería un panel distinto al que las cifras de este README describen. La bandera lo
+desactiva y usa solo los parquet del repositorio:
+
+```bash
+SP500_SOLO_RESPALDO=1 .venv/bin/python -m pytest tests/ -q
+```
+
+Es lo que usa la integración continua, y por eso su resultado coincide exactamente con el local.
+Verificado sobre una máquina sin caché: 458 tickers, 0.4404 y 0.3164, en 1.4 segundos y sin
+tocar la red.
 
 `test_reproducibilidad.py` hace algo distinto y conviene señalarlo: recorre la cadena completa
 —extracción, panel balanceado, rendimientos, exclusión de datos corruptos, correlación,
@@ -534,13 +549,14 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        157 pruebas
+├── tests/                        178 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
 │   ├── test_nonlinear.py         Dependencia no lineal
 │   ├── test_cofactors.py         Cofactores
 │   ├── test_stress.py            Pruebas de estrés
+│   ├── test_analysis.py          Correlación, distancia y dispersión
 │   └── test_reproducibilidad.py  Fija las cifras publicadas contra el código
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas

@@ -10,6 +10,12 @@ Este modulo resuelve dos problemas:
 2. **Un solo lugar para los parametros.** Fechas, universo y URLs viven aqui,
    no regados por el notebook. Cambiar el periodo de analisis es cambiar una
    linea.
+
+3. **Un modo reproducible sin red.** Con ``SP500_SOLO_RESPALDO=1`` la capa de
+   datos no intenta descargar nada y usa unicamente los parquet incluidos en
+   el repositorio. Es lo que permite que la bateria de pruebas de un resultado
+   identico en cualquier maquina, y que la integracion continua no dependa de
+   que Yahoo Finance responda.
 """
 
 from __future__ import annotations
@@ -91,6 +97,15 @@ SP_INDEX_URLS = {
 # Exigir historia casi completa cuesta 44 empresas (9% del universo) y a cambio
 # multiplica por cinco la historia disponible. Se elige 2900 en lugar de 2934
 # para tolerar que alguna accion haya tenido uno o dos dias suspendidos.
+# Modo reproducible: ignora la descarga en vivo y usa solo los respaldos del
+# repositorio. Sin esto, una maquina sin cache -la de integracion continua, o
+# la de un companiero que acaba de clonar- bajaria precios frescos de Yahoo y
+# obtendria cifras distintas a las que el README publica, de modo que las
+# pruebas de reproducibilidad fallarian por la razon equivocada.
+SOLO_RESPALDO = os.getenv("SP500_SOLO_RESPALDO", "").strip().lower() in {
+    "1", "true", "si", "sí", "yes",
+}
+
 MIN_OBSERVATIONS = 2900  # ~99% del periodo 2015-2026
 
 # Umbral de rendimiento diario a partir del cual el dato es sospechoso.

@@ -53,9 +53,23 @@ def _load_with_fallback(
     label: str,
     force_refresh: bool = False,
 ) -> pd.DataFrame:
-    """Aplica la cadena cache -> descarga -> respaldo para una fuente."""
+    """Aplica la cadena cache -> descarga -> respaldo para una fuente.
+
+    Con ``config.SOLO_RESPALDO`` activo la descarga se omite por completo: se
+    usa el cache si existe y el respaldo del repositorio si no. Es el modo que
+    vuelve deterministas las pruebas de reproducibilidad, porque bajar precios
+    frescos daria un panel distinto al que las cifras publicadas describen.
+    """
     if cache.exists() and not force_refresh:
         return pd.read_parquet(cache)
+
+    if config.SOLO_RESPALDO:
+        if fallback.exists():
+            return pd.read_parquet(fallback)
+        raise RuntimeError(
+            f"[{label}] SP500_SOLO_RESPALDO esta activo y no hay respaldo en "
+            f"{fallback}. Desactivalo para permitir la descarga en vivo."
+        )
 
     try:
         frame = download()

@@ -1,0 +1,67 @@
+# Corre la bateria completa en cada push y en cada pull request.
+#
+# Por que importa en un proyecto de cuatro personas: nadie tiene que acordarse
+# de correr las pruebas antes de subir, y si alguien rompe algo se sabe en
+# minutos y no cuando otro lo descubre tres dias despues.
+#
+# Las pruebas de reproducibilidad necesitan precios. No se versiona el cache
+# completo, pero si data/processed/sp500_prices_fallback.parquet.
+#
+# SP500_SOLO_RESPALDO=1 es lo que vuelve esto fiable. Sin esa bandera, una
+# maquina sin cache intentaria descargar 503 tickers de Yahoo en vivo: seria
+# lento, dependeria de que el servicio responda, y sobre todo traeria un panel
+# distinto al que las cifras publicadas describen, de modo que las pruebas de
+# reproducibilidad fallarian por la razon equivocada. Con la bandera, la
+# bateria corre en segundos y da exactamente el mismo resultado que en local.
+name: pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Usa unicamente los respaldos del repositorio: sin descargas, deterministico.
+  SP500_SOLO_RESPALDO: "1"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          # numpy 2.5.2 no instala en versiones anteriores.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verificar que todos los modulos importan
+        run: |
+          python - <<'PY'
+          import importlib, pathlib, sys
+          fallas = []
+          for f in sorted(pathlib.Path("src").glob("*.py")):
+              if f.stem == "__init__":
+                  continue
+              try:
+                  importlib.import_module(f"src.{f.stem}")
+              except Exception as e:
+                  fallas.append(f"src/{f.stem}.py: {type(e).__name__}: {e}")
+          print("\n".join(fallas) if fallas else "todos los modulos importan")
+          sys.exit(1 if fallas else 0)
+          PY
+
+      - name: Correr las pruebas
+        run: pytest tests/ -q --durations=10
