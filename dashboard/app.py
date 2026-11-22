@@ -29,6 +29,7 @@ import streamlit as st
 
 import datos as D
 import estilo as E
+from src.risk import DIAS_HABILES
 
 st.set_page_config(page_title="Riesgo S&P 500 · Terminal",
                    page_icon="◧", layout="wide")
@@ -236,9 +237,9 @@ def v_correlacion(n: int):
 # ==========================================================================
 # Descomposición de riesgo
 # ==========================================================================
-def v_riesgo(n: int):
-    rets, _, sectores = D.cargar()
-    base = [x for x in ["AAPL", "JPM", "XOM", "KO", "NVDA"] if x in rets.columns]
+def v_riesgo(cartera: dict):
+    _, _, sectores = D.cargar()
+    sel, metodo, encoger = cartera["posiciones"], cartera["metodo"], cartera["encoger"]
 
     E.cabecera(
         "Entregable 2 · Motor de riesgo",
@@ -249,23 +250,17 @@ def v_riesgo(n: int):
         "y esa diferencia es lo que el motor existe para mostrar.",
     )
 
-    c1, c2, c3 = st.columns([3, 1.1, 1.2], gap="medium")
-    sel = c1.multiselect("Posiciones", sorted(rets.columns), default=base or sorted(rets.columns)[:5])
-    metodo = c2.radio("Asignación", ["Mínima varianza", "Equiponderado"])
-    encoger = c3.toggle("Encogimiento L-W", value=True,
-                       help="Estimador de Ledoit-Wolf: mezcla la covarianza observada con una version estructurada y estable. Evita que la optimizacion persiga ruido.")
-
     if len(sel) < 2:
-        E.nota("<p>Selecciona al menos dos posiciones para calcular una matriz de covarianza.</p>",
-               "Sin datos suficientes", "aviso")
+        E.nota("<p>Define una cartera de al menos dos posiciones en la barra lateral: "
+               "con una sola no hay covarianza que descomponer.</p>",
+               "Cartera insuficiente", "aviso")
         return
 
-    clave = "minima varianza" if metodo == "Mínima varianza" else "equiponderado"
-    r, delta = D.riesgo(tuple(sel), clave, encoger)
+    r, delta = D.riesgo(tuple(sel), metodo, encoger)
 
     E.contexto([
         ("Posiciones", str(len(sel))),
-        ("Observaciones", f"{rets.shape[0]:,} días"),
+        ("Observaciones", f"{len(D.cargar()[0]):,} días"),
         ("Asignación", metodo),
         ("Estimador", f"Ledoit-Wolf δ={delta:.3f}" if encoger else "Covarianza muestral"),
     ])
@@ -332,7 +327,7 @@ def v_riesgo(n: int):
         ax.legend(loc="lower right")
         E.mostrar(fig)
 
-    if clave == "minima varianza":
+    if metodo == D.MINIMA_VARIANZA:
         E.nota(
             "<p>En una cartera de mínima varianza la columna <b>riesgo / peso</b> vale "
             "1.00 en todas las posiciones con peso. No es un error de cálculo: es la "
@@ -422,7 +417,7 @@ def v_volatilidad():
               "ese día. La realizada es la desviación estándar móvil de 21 sesiones y "
               "sirve de contraste.")
 
-    realizada = rets[ticker].rolling(21).std() * np.sqrt(252)
+    realizada = rets[ticker].rolling(21).std() * np.sqrt(DIAS_HABILES)
     fig, ax = E.lienzo(3.1)
     ax.plot(realizada.index, realizada * 100, color=E.TENUE, linewidth=.75,
             label="realizada · 21 sesiones")
@@ -803,6 +798,262 @@ brecha = ρ equivalente − |ρ de Pearson|</div>
 
 
 # ==========================================================================
+# Pruebas de estres
+# ==========================================================================
+def v_estres(cartera: dict):
+    sel, metodo, encoger = cartera["posiciones"], cartera["metodo"], cartera["encoger"]
+    if len(sel) < 2:
+        E.cabecera("Entregable 4 · Pruebas de estrés",
+                   "¿Qué le pasa a esta cartera si se repite una crisis?",
+                   "Define una cartera de al menos dos posiciones en la barra lateral.")
+        return
+
+    # El deslizador trabaja en puntos porcentuales enteros para que su etiqueta
+    # se lea "-10%" y no "-0%", que es lo que produce formatear un -0.10 con
+    # un formato entero. El valor se convierte a fraccion aqui.
+    choque = st.session_state.get("choque_pct", -10) / 100
+    r = D.estres(tuple(sel), metodo, encoger, choque)
+    v95, v99, caida = r["var95"], r["var99"], r["caida"]
+
+    E.cabecera(
+        "Entregable 4 · Pruebas de estrés",
+        "¿Qué le pasa a esta cartera si se repite una crisis?",
+        f"En el peor episodio del periodo habría perdido <b>{caida['caida']:.1%}</b> "
+        f"en {caida['dias_de_caida']} sesiones. Su volatilidad se multiplica por "
+        f"<b>{r['regimenes'].set_index('regimen').loc['Tensión', 'vol_portafolio'] / r['regimenes'].set_index('regimen').loc['Calma', 'vol_portafolio']:.1f}</b> "
+        f"al pasar de calma a tensión, y un modelo de beta constante subestimaría "
+        f"la pérdida ante un choque en <b>{r['choque']['subestimacion_relativa']:.1%}</b>.",
+    )
+
+    E.contexto([
+        ("Posiciones", str(len(sel))),
+        ("Asignación", metodo),
+        ("Historia", f"{len(r['serie']):,} sesiones"),
+        ("Medidas", "VaR y ES históricos"),
+    ])
+
+    E.kpis([
+        {"clave": "VaR 95% · 1 día", "valor": f"{v95['var']:.2%}", "tono": "aviso",
+         "detalle": "Pérdida mínima esperada en el peor 5% de las sesiones."},
+        {"clave": "Expected Shortfall 95%", "valor": f"{v95['expected_shortfall']:.2%}",
+         "tono": "alto",
+         "detalle": f"Pérdida media de esa cola ({v95['dias_en_la_cola']} sesiones). "
+                    f"Es {v95['razon_es_var']:.2f}× el VaR."},
+        {"clave": "VaR 99% · 1 día", "valor": f"{v99['var']:.2%}", "tono": "aviso",
+         "detalle": f"Expected Shortfall al 99%: {v99['expected_shortfall']:.2%}."},
+        {"clave": "Máxima caída", "valor": f"{caida['caida']:.1%}", "tono": "alto",
+         "detalle": f"{caida['pico']:%d %b %Y} → {caida['fondo']:%d %b %Y}. "
+                    + (f"Recuperada en {caida['dias_de_recuperacion']} sesiones."
+                       if caida["recuperacion"] is not None else "Sin recuperar.")},
+    ])
+
+    E.detalle("Por qué VaR histórico y por qué acompañado de Expected Shortfall", """
+        <p><b>Histórico y no paramétrico.</b> Ambas medidas se leen directamente de la
+        distribución observada, sin suponer normalidad. Es deliberado: este mismo
+        proyecto documentó que los rendimientos tienen colas más pesadas que la normal
+        —es la razón por la que el GARCH subestima los máximos de crisis— de modo que
+        un VaR paramétrico gaussiano heredaría ese error justo en la cola que pretende
+        medir.</p>
+        <p><b>El Expected Shortfall acompaña al VaR y no al revés.</b> El VaR dice
+        cuánto se pierde en el peor 5% de las sesiones <i>en el mejor de esos casos</i>;
+        no dice nada sobre qué tan grave puede ser el resto de la cola. El Expected
+        Shortfall promedia toda esa cola, y por eso es la medida que el marco de
+        Basilea adoptó en sustitución del VaR. La razón ES/VaR de esta cartera es
+        """ + f"{v95['razon_es_var']:.2f}" + """: cuanto más alta, más pesada la cola.</p>
+    """)
+
+    # ---------- escenarios historicos ----------
+    E.seccion("01", "Reproducción de episodios reales",
+              "La cartera actual sometida a los rendimientos que efectivamente "
+              "ocurrieron en cada ventana. No hay modelo de por medio ni parámetros "
+              "que calibrar: es aritmética sobre datos observados.")
+
+    esc = r["escenarios"]
+    if len(esc):
+        izq, der = st.columns([3, 2], gap="medium")
+        with izq:
+            E.tabla(esc, {
+                "escenario": {"nombre": "Episodio"},
+                "sesiones": {"nombre": "Sesiones", "fmt": ent, "num": True},
+                "rendimiento": {"nombre": "Resultado", "nota": "acumulado",
+                                "fmt": pct1, "num": True},
+                "caida_maxima": {"nombre": "Máxima caída", "nota": "pico a valle",
+                                 "fmt": pct1, "num": True},
+                "peor_dia": {"nombre": "Peor sesión", "fmt": pct1, "num": True},
+                "volatilidad": {"nombre": "Volatilidad", "nota": "anualizada",
+                                "fmt": pct1, "num": True, "termino": "volatilidad"},
+            }, clases={"rendimiento": direccion, "caida_maxima": direccion,
+                       "peor_dia": direccion})
+        with der:
+            fig, ax = E.lienzo(2.9, 5.6)
+            orden = esc.sort_values("rendimiento")
+            y = np.arange(len(orden))
+            ax.barh(y, orden["rendimiento"] * 100,
+                    color=np.where(orden["rendimiento"] < 0, E.ALTO, E.BAJO), height=.62)
+            ax.set_yticks(y, orden["escenario"], fontsize=8.5)
+            ax.invert_yaxis()
+            ax.axvline(0, color=E.TINTA, linewidth=.9)
+            ax.set_xlabel("resultado acumulado (%)")
+            ax.grid(axis="x"); ax.grid(axis="y", visible=False)
+            E.mostrar(fig)
+
+    E.seccion("02", "Peores ventanas detectadas en los datos",
+              "Complementa a los episodios con nombre, que los eligió una persona. "
+              "Estas salen del propio panel: si el peor tramo del periodo no coincide "
+              "con ninguno de los nombrados, aparece aquí de todos modos. Se exige "
+              "separación de 90 días para que no sean cinco recortes del mismo "
+              "desplome.")
+    E.tabla(r["ventanas"], {
+        "inicio": {"nombre": "Inicio", "fmt": lambda d: f"{d:%Y-%m-%d}"},
+        "fin": {"nombre": "Fin", "fmt": lambda d: f"{d:%Y-%m-%d}"},
+        "rendimiento": {"nombre": "Resultado", "nota": "21 sesiones",
+                        "fmt": pct1, "num": True},
+    }, clases={"rendimiento": direccion})
+
+    # ---------- regimenes ----------
+    reg = r["regimenes"].set_index("regimen")
+    E.seccion("03", "Riesgo condicional al régimen",
+              "La misma cartera valuada con la covarianza de los días de calma y con "
+              "la de los días de tensión, en lugar de una sola para toda la historia. "
+              "La diferencia mide cuánta protección desaparece justo cuando hace falta.")
+
+    E.kpis([
+        {"clave": "Volatilidad en calma", "termino": "volatilidad",
+         "valor": f"{reg.loc['Calma', 'vol_portafolio']:.1%}", "tono": "bajo",
+         "detalle": f"{int(reg.loc['Calma', 'sesiones']):,} sesiones."},
+        {"clave": "Volatilidad en tensión", "termino": "volatilidad",
+         "valor": f"{reg.loc['Tensión', 'vol_portafolio']:.1%}", "tono": "alto",
+         "detalle": f"{reg.loc['Tensión', 'vs_completo']:+.0%} frente al periodo completo."},
+        {"clave": "Diversificación en calma", "termino": "ratio de diversificacion",
+         "valor": f"{reg.loc['Calma', 'ratio_diversificacion']:.3f}", "tono": "bajo",
+         "detalle": "Cuánto riesgo se cancela entre posiciones."},
+        {"clave": "Diversificación en tensión", "termino": "ratio de diversificacion",
+         "valor": f"{reg.loc['Tensión', 'ratio_diversificacion']:.3f}", "tono": "alto",
+         "detalle": f"Pierde "
+                    f"{1 - reg.loc['Tensión', 'ratio_diversificacion'] / reg.loc['Calma', 'ratio_diversificacion']:.0%} "
+                    f"de su capacidad de cancelación."},
+    ])
+
+    E.tabla(r["regimenes"], {
+        "regimen": {"nombre": "Régimen"},
+        "sesiones": {"nombre": "Sesiones", "fmt": ent, "num": True},
+        "vol_portafolio": {"nombre": "Vol. de la cartera", "nota": "anualizada",
+                           "fmt": pct2, "num": True},
+        "vol_ponderada": {"nombre": "Suma ponderada", "nota": "sin cancelación",
+                          "fmt": pct2, "num": True},
+        "ratio_diversificacion": {"nombre": "Diversificación", "fmt": num3, "num": True,
+                                  "termino": "ratio de diversificacion"},
+        "vs_completo": {"nombre": "vs periodo completo", "fmt": lambda v: f"{v:+.1%}",
+                        "num": True},
+    }, clases={"vs_completo": direccion},
+       destaca=lambda f: f["regimen"] == "Tensión")
+
+    # ---------- choque ----------
+    c = r["choque"]
+    E.seccion("04", "Proyección ante un choque de mercado",
+              "Qué pérdida proyecta cada uno de los dos modelos que el proyecto "
+              "estimó. La diferencia entre ambos es, en puntos de rendimiento, el "
+              "costo de suponer que la beta no cambia con el régimen.")
+
+    st.slider("Magnitud del choque de mercado", min_value=-40, max_value=-1,
+              value=int(round(choque * 100)), step=1, key="choque_pct",
+              format="%d%%",
+              help="Movimiento del índice sobre el que se proyecta la pérdida. "
+                   "Marzo de 2020 fue del orden de -34% en un mes.")
+
+    E.kpis([
+        {"clave": "Modelo de beta constante", "termino": "beta",
+         "valor": f"{c['perdida_modelo_estandar']:.2%}", "tono": "aviso",
+         "detalle": f"Beta única de la cartera: {c['beta_unica']:.3f}."},
+        {"clave": "Modelo de beta condicional", "termino": "beta condicional",
+         "valor": f"{c['perdida_modelo_condicional']:.2%}", "tono": "alto",
+         "detalle": f"Beta en tensión: {c['beta_tension']:.3f}."},
+        {"clave": "Error del modelo estándar",
+         "valor": f"{c['error_del_modelo_estandar']:.2%}", "tono": "alto",
+         "detalle": "Pérdida adicional que el modelo estándar no anticipa."},
+        {"clave": "Subestimación", "valor": f"{c['subestimacion_relativa']:.1%}",
+         "tono": "alto",
+         "detalle": "En términos relativos sobre la pérdida proyectada."},
+    ])
+
+    E.nota(
+        f"<p>La beta de esta cartera pasa de <b>{c['beta_calma']:.3f}</b> en calma a "
+        f"<b>{c['beta_tension']:.3f}</b> en tensión. La beta única del modelo estándar "
+        f"vale <b>{c['beta_unica']:.3f}</b> y cae entre las dos, lo cual no es "
+        f"casualidad: se estima sobre todas las sesiones, de las que una quinta parte "
+        f"son de tensión, así que <b>ya absorbe parte del salto</b>.</p>"
+        f"<p>Por eso el error real de usarla ({c['salto_vs_beta_unica']:+.4f}) es menor "
+        f"que el salto completo γ de la cartera ({c['gamma_cartera']:+.4f}). Reportar γ "
+        f"como si fuera el error exageraría el problema, y este proyecto no necesita "
+        f"exagerarlo.</p>",
+        "γ y el error del modelo son cantidades distintas", "marca")
+
+    E.seccion("05", "Desglose del error por posición",
+              "Qué posiciones concentran la pérdida que el modelo estándar no anticipa. "
+              "No son las más volátiles: son las que combinan peso alto con un salto "
+              "grande de beta.")
+
+    izq, der = st.columns([3, 2], gap="medium")
+    with izq:
+        E.tabla(r["detalle"], {
+            "ticker": {"nombre": "Activo", "tick": True},
+            "sector": {"nombre": "Sector"},
+            "peso": {"nombre": "Peso", "fmt": pct1, "num": True},
+            "beta_unica": {"nombre": "β única", "fmt": num3, "num": True,
+                           "termino": "beta"},
+            "beta_tension": {"nombre": "β tensión", "fmt": num3, "num": True,
+                             "termino": "beta condicional"},
+            "aporte_condicional": {"nombre": "Aporte a la pérdida", "fmt": pct2,
+                                   "num": True},
+            "error": {"nombre": "No anticipado", "nota": "por el modelo estándar",
+                      "fmt": pct2, "num": True},
+        }, clases={"error": direccion})
+    with der:
+        d = r["detalle"]
+        fig, ax = E.lienzo(max(2.4, .33 * len(d) + 1.0), 5.4)
+        y = np.arange(len(d))
+        ax.barh(y, d["error"] * 100,
+                color=np.where(d["error"] < 0, E.ALTO, E.BAJO), height=.62)
+        ax.set_yticks(y, d["ticker"], fontsize=9)
+        ax.invert_yaxis()
+        ax.axvline(0, color=E.TINTA, linewidth=.9)
+        ax.set_xlabel("pérdida no anticipada (%)")
+        ax.grid(axis="x"); ax.grid(axis="y", visible=False)
+        E.mostrar(fig)
+
+    peor = r["detalle"].iloc[0]
+    if metodo == D.MINIMA_VARIANZA:
+        E.nota(
+            f"<p>La posición que más error concentra es <b>{peor['ticker']}</b> "
+            f"({peor['sector']}), con {peor['peso']:.1%} del capital y una beta que "
+            f"pasa de {peor['beta_unica']:.3f} a {peor['beta_tension']:.3f}.</p>"
+            f"<p><b>No es coincidencia.</b> La optimización de mínima varianza se "
+            f"concentra en los activos de menor volatilidad, que son los defensivos; "
+            f"y los defensivos son precisamente los que más capacidad defensiva "
+            f"pierden al entrar en tensión, como muestra la vista de comportamiento "
+            f"en crisis. La cartera que parece más segura es la que peor describe el "
+            f"modelo estándar. Cambia la asignación a equiponderada en la barra "
+            f"lateral para comparar.</p>",
+            "El optimizador se concentra justo donde falla el supuesto", "alto")
+
+    E.detalle("Alcance y límites de estas pruebas", """
+        <p><b>Lo que sí sostiene.</b> La reproducción de episodios reales no supone
+        nada: son los rendimientos que ocurrieron aplicados a la cartera de hoy. El
+        riesgo por régimen y la proyección del choque sí usan modelos, pero sus
+        parámetros están estimados sobre el mismo panel y documentados en sus vistas.</p>
+        <p><b>Lo que no sostiene.</b> El pasado no agota el espacio de lo posible: la
+        peor caída de la muestra no es la peor caída concebible, y una crisis con una
+        estructura distinta —un choque sectorial en lugar de uno de mercado— no está
+        representada. La proyección del choque supone además que la relación con el
+        mercado se mantiene lineal dentro de cada régimen, cosa que en los movimientos
+        más extremos tiende a romperse.</p>
+        <p><b>Lo que haría falta para ir más lejos.</b> Escenarios por factor en lugar
+        de un único factor de mercado, y una distribución con colas pesadas —una t de
+        Student— para generar escenarios sintéticos más severos que los observados.</p>
+    """)
+
+
+# ==========================================================================
 # Validación
 # ==========================================================================
 def v_validacion(n: int):
@@ -959,6 +1210,14 @@ def v_metodo():
          "m": "La beta promedio del universo vale 1 por construcción",
          "c": "No se dispone de capitalizaciones diarias históricas",
          "s": "Ponderar por capitalización histórica"},
+        {"l": "Los escenarios de estrés no exceden lo observado",
+         "m": "La peor ventana del panel es −33.5% (marzo 2020)",
+         "c": "Reproducen episodios reales; el pasado no agota lo posible",
+         "s": "Escenarios sintéticos con distribución de colas pesadas"},
+        {"l": "La proyección del choque supone linealidad dentro del régimen",
+         "m": "La subestimación relativa es constante en el tamaño del choque",
+         "c": "El modelo con cofactor es lineal en el rendimiento del mercado",
+         "s": "Término cuadrático, o escenarios por factor sectorial"},
     ]), {
         "l": {"nombre": "Limitación"},
         "m": {"nombre": "Magnitud medida"},
@@ -984,6 +1243,12 @@ def v_metodo():
         {"e": "stack() en pandas 3.0 conserva los nulos",
          "d": "Cambio de comportamiento respecto a versiones anteriores.",
          "i": "412,335 falsos eventos extremos en lugar de 20"},
+        {"e": "γ confundida con el error del modelo de beta constante",
+         "d": "γ es el salto de calma a tensión; la beta única ya absorbe parte.",
+         "i": "Habría exagerado el error: el real es el 38% de γ"},
+        {"e": "La asignación equiponderada caía en mínima varianza",
+         "d": "La interfaz enviaba el nombre con mayúscula y el cálculo comparaba en minúscula.",
+         "i": "Una opción del terminal no hacía nada, sin aviso"},
     ]), {
         "e": {"nombre": "Error"},
         "d": {"nombre": "Descripción"},
@@ -1003,8 +1268,9 @@ def v_metodo():
         {"m": "src/volatility.py", "f": "GARCH(1,1) y pronóstico de volatilidad"},
         {"m": "src/nonlinear.py", "f": "Información mutua y dependencia de cola"},
         {"m": "src/cofactors.py", "f": "Beta condicional al régimen"},
+        {"m": "src/stress.py", "f": "VaR, Expected Shortfall y escenarios de crisis"},
         {"m": "databricks/01–06", "f": "Equivalente a escala de 1,500 activos (PySpark)"},
-        {"m": "dashboard/", "f": "Este terminal"},
+        {"m": "dashboard/", "f": "Este terminal: estilo, datos y vistas"},
     ]), {"m": {"nombre": "Módulo"}, "f": {"nombre": "Función"}})
 
     E.seccion("05", "Glosario", "Todos los términos empleados en el terminal.")
@@ -1020,15 +1286,22 @@ def v_metodo():
 # ==========================================================================
 # Navegación
 # ==========================================================================
+# Cada vista declara que insumo necesita, y la barra lateral muestra solo los
+# controles de ese insumo. "cartera" es compartida: el motor de riesgo y las
+# pruebas de estres hablan siempre de la misma, que es lo que convierte al
+# terminal en una herramienta en lugar de siete informes sueltos.
 VISTAS = {
-    "Resumen ejecutivo": (v_resumen, False),
-    "Estructura de correlación": (v_correlacion, True),
-    "Motor de riesgo": (v_riesgo, True),
-    "Volatilidad y pronóstico": (v_volatilidad, False),
-    "Comportamiento en crisis": (v_crisis, True),
-    "Validación del modelo": (v_validacion, True),
-    "Metodología": (v_metodo, False),
+    "Resumen ejecutivo":         (v_resumen, None),
+    "Estructura de correlación": (v_correlacion, "muestra"),
+    "Motor de riesgo":           (v_riesgo, "cartera"),
+    "Volatilidad y pronóstico":  (v_volatilidad, None),
+    "Comportamiento en crisis":  (v_crisis, "muestra"),
+    "Pruebas de estrés":         (v_estres, "cartera"),
+    "Validación del modelo":     (v_validacion, "muestra"),
+    "Metodología":               (v_metodo, None),
 }
+
+CARTERA_INICIAL = ["AAPL", "JPM", "XOM", "KO", "NVDA", "SO", "PG", "UNH"]
 
 with st.sidebar:
     E.html(
@@ -1038,26 +1311,44 @@ with st.sidebar:
     E.html('<div class="lat-tit">Vistas</div>')
     eleccion = st.radio("Vistas", list(VISTAS), label_visibility="collapsed")
 
-    vista, usa_muestra = VISTAS[eleccion]
-    if usa_muestra:
+    vista, necesita = VISTAS[eleccion]
+    n_activos, cartera = 40, None
+
+    if necesita == "muestra":
         E.html('<div class="lat-tit">Parámetros</div>')
         n_activos = st.slider("Activos en la muestra", 20, 120, 40, step=10)
         E.html(
             f'<div class="lat-pie">Los pares crecen con el cuadrado del universo: '
             f'<b>{n_activos}</b> activos son <b>{n_activos * (n_activos - 1) // 2:,}</b> '
-            f'pares. Aumentar la muestra da más evidencia a costa de tiempo de '
+            f'pares. Aumentar la muestra da más evidencia, a costa de tiempo de '
             f'cálculo.</div>')
-    else:
-        n_activos = 40
+
+    elif necesita == "cartera":
+        universo = sorted(D.cargar()[0].columns)
+        E.html('<div class="lat-tit">Cartera</div>')
+        posiciones = st.multiselect(
+            "Posiciones", universo,
+            default=[x for x in CARTERA_INICIAL if x in universo] or universo[:5])
+        metodo = st.radio("Asignación", [D.MINIMA_VARIANZA, D.EQUIPONDERADO])
+        encoger = st.toggle(
+            "Encogimiento Ledoit-Wolf", value=True,
+            help="Mezcla la covarianza observada con una versión estructurada y "
+                 "estable. Evita que la optimización persiga ruido cuando hay "
+                 "pocos datos por activo.")
+        cartera = {"posiciones": posiciones, "metodo": metodo, "encoger": encoger}
+        E.html(
+            '<div class="lat-pie">La misma cartera alimenta el <b>motor de riesgo</b> '
+            'y las <b>pruebas de estrés</b>.</div>')
 
     E.html(
         '<div class="lat-pie">Universidad Panamericana · Datos Masivos<br>'
         'Rissotto · Herrera · de la Mora · del Valle<br><br>'
-        'Análisis en <b>src/</b> · <b>111 pruebas</b><br>'
-        'Pasa el cursor sobre los términos subrayados para ver su definición.</div>',
-        )
+        'Análisis en <b>src/</b> · <b>143 pruebas</b><br>'
+        'Pasa el cursor sobre los términos subrayados para ver su definición.</div>')
 
-if usa_muestra:
+if necesita == "muestra":
     vista(n_activos)
+elif necesita == "cartera":
+    vista(cartera)
 else:
     vista()

@@ -34,6 +34,16 @@ from src.risk import (  # noqa: E402
     risk_decomposition,
     sample_covariance,
 )
+from src.stress import (  # noqa: E402
+    choque_de_mercado,
+    detalle_del_choque,
+    maxima_caida,
+    peores_ventanas,
+    riesgo_por_regimen,
+    serie_portafolio,
+    tabla_de_escenarios,
+    var_historico,
+)
 from src.validation import barrido_de_ventanas  # noqa: E402
 from src.volatility import (  # noqa: E402
     ajustar_garch,
@@ -43,6 +53,17 @@ from src.volatility import (  # noqa: E402
 
 # Una hora de vida para los datos: son precios de cierre, no cambian intradia.
 TTL = 3600
+
+# Asignaciones disponibles. La comparacion se hace contra estas constantes y
+# nunca contra una cadena escrita a mano: una diferencia de mayusculas entre la
+# interfaz y el calculo haria que una opcion cayera silenciosamente en la otra.
+MINIMA_VARIANZA = "Mínima varianza"
+EQUIPONDERADO = "Equiponderado"
+
+
+def _equipondera(metodo: str) -> bool:
+    """Normaliza el nombre de la asignacion recibido desde la interfaz."""
+    return metodo.strip().lower().startswith("equi")
 
 
 # ==========================================================================
@@ -128,10 +149,22 @@ def riesgo(tickers: tuple[str, ...], metodo: str, encoger: bool) -> tuple[dict, 
     else:
         cov, delta = sample_covariance(X), 0.0
     pesos = (
-        equal_weights(len(tickers)) if metodo == "equiponderado"
+        equal_weights(len(tickers)) if _equipondera(metodo)
         else min_variance_weights_long_only(cov)
     )
     return risk_decomposition(cov, pesos, list(tickers)), float(delta)
+
+
+@st.cache_data(ttl=TTL)
+def _pesos_de(tickers: tuple[str, ...], metodo: str, encoger: bool) -> np.ndarray:
+    """Los pesos de la cartera, sin la descomposicion de riesgo completa."""
+    rets, _, _ = cargar()
+    X = rets[list(tickers)].to_numpy(dtype=np.float64)
+    cov = ledoit_wolf_shrinkage(X)[0] if encoger else sample_covariance(X)
+    return (
+        equal_weights(len(tickers)) if _equipondera(metodo)
+        else min_variance_weights_long_only(cov)
+    )
 
 
 @st.cache_data(ttl=TTL, show_spinner="Corriendo validacion hacia adelante...")
@@ -160,6 +193,39 @@ def cofactores() -> pd.DataFrame:
     rets, cons, sectores = cargar()
     m, _, _, tension = mercado_y_garch("v1")
     return cf.tabla_de_cofactores(rets, m, tension, sectores)
+
+
+@st.cache_data(ttl=TTL, show_spinner="Aplicando escenarios de estres...")
+def estres(tickers: tuple[str, ...], metodo: str, encoger: bool,
+           choque: float) -> dict:
+    """Todas las medidas de estres de una cartera, en un solo calculo.
+
+    Se agrupan aqui porque comparten los mismos pesos y la misma serie: si
+    cada una los recalculara por separado, cambiar el choque en la interfaz
+    volveria a ajustar el GARCH del mercado.
+    """
+    rets, _, _ = cargar()
+    lista = list(tickers)
+    _, delta = riesgo(tickers, metodo, encoger)
+    pesos = _pesos_de(tickers, metodo, encoger)
+
+    serie = serie_portafolio(rets, pesos, lista)
+    _, _, _, tension = mercado_y_garch("v1")
+    cof = cofactores()
+
+    return {
+        "pesos": pesos,
+        "delta": delta,
+        "serie": serie,
+        "var95": var_historico(serie, 0.95),
+        "var99": var_historico(serie, 0.99),
+        "caida": maxima_caida(serie),
+        "escenarios": tabla_de_escenarios(serie),
+        "ventanas": peores_ventanas(serie),
+        "regimenes": riesgo_por_regimen(rets, pesos, lista, tension),
+        "choque": choque_de_mercado(pesos, lista, cof, choque),
+        "detalle": detalle_del_choque(pesos, lista, cof, choque),
+    }
 
 
 @st.cache_data(ttl=TTL)

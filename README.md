@@ -170,6 +170,61 @@ cualquier submuestra. El agregado no puede revelar nada; toda la información es
 
 ---
 
+## Pruebas de estrés
+
+Cierran el cabo que el Entregable 2 dejó abierto y convierten el tablero en una
+herramienta: en lugar de describir el riesgo en promedio, responden **qué le pasa a una
+cartera concreta si se repite una crisis**. Viven en `src/stress.py` y usan todo lo
+anterior: las correlaciones del Entregable 1, el motor del 2, y los regímenes y betas
+condicionales del 3.
+
+**Reproducción de episodios reales.** La cartera actual sometida a los rendimientos que
+efectivamente ocurrieron. Sin modelo ni parámetros: aritmética sobre datos observados.
+Para la cartera de mínima varianza de ocho posiciones que trae el tablero por defecto:
+
+| Episodio | Sesiones | Resultado | Máxima caída |
+|---|---|---|---|
+| COVID-19 | 24 | **−33.0%** | −33.5% |
+| Volmageddon 2018 | 10 | −9.0% | −9.3% |
+| Mercado bajista 2022 | 196 | −7.9% | −15.4% |
+| Cuarto trimestre 2018 | 59 | −5.3% | −10.9% |
+
+**VaR y Expected Shortfall históricos**, leídos de la distribución observada y no de una
+normal. Es deliberado: este mismo proyecto documentó que las colas son más pesadas que
+la normal, así que un VaR paramétrico heredaría ese error justo en la cola que pretende
+medir. Al 95%, el VaR es 1.26% y el Expected Shortfall 2.20% — **1.75 veces el VaR**.
+
+**El riesgo se duplica al cambiar de régimen.** La misma cartera, valuada con la
+covarianza de los días de calma y con la de los días de tensión:
+
+| Régimen | Volatilidad | Ratio de diversificación |
+|---|---|---|
+| Calma | 10.7% | 1.655 |
+| Tensión | **26.6%** | **1.246** |
+
+La diversificación pierde el 25% de su capacidad de cancelación exactamente cuando se
+necesita.
+
+**Un modelo de beta constante subestima la pérdida.** Ante un choque de mercado de −10%,
+el modelo del Entregable 1 proyecta −6.45% y el de beta condicional −7.26%: una
+**subestimación del 12.6%**.
+
+Conviene no confundir dos cantidades. γ es el salto de la beta de calma a la de tensión.
+El error del modelo estándar es menor, porque la beta única se estima sobre todas las
+sesiones —de las que una quinta parte son de tensión— y **ya absorbe parte del salto**.
+Medido sobre las 457 acciones, la beta única cae entre la de calma y la de tensión en el
+**100% de los casos**, y el error real equivale al 38% de γ. Reportar γ como si fuera el
+error exageraría el problema.
+
+**Y el hallazgo que amarra todo:** el desglose por posición muestra que el error se
+concentra en las posiciones defensivas. La optimización de mínima varianza se concentra
+en los activos de menor volatilidad, que son los defensivos, y los defensivos son
+precisamente los que más capacidad defensiva pierden en tensión. **La cartera que parece
+más segura es la que peor describe el modelo estándar**: su subestimación es del 12.6%
+contra el 6.2% de una cartera equiponderada.
+
+---
+
 ## Fuentes de datos
 
 Tres fuentes, **todas obtenidas mediante código**: dos por API/librería y una por scraping.
@@ -417,8 +472,9 @@ El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
 
 **Abrir el tablero**
 
-El Entregable 3 incluye un tablero local que recorre todo el proyecto: una página por pregunta,
-con el número a la vista y la explicación de cómo se llegó a él.
+El terminal recorre todo el proyecto: una vista por pregunta, con la respuesta en una frase
+antes del primer número, la unidad de cada columna a la vista y la metodología plegada en
+cada sección. Los términos técnicos se conservan y muestran su definición al pasar el cursor.
 
 ```bash
 .venv/bin/streamlit run dashboard/app.py
@@ -428,9 +484,10 @@ Se abre solo en `http://localhost:8501`. No necesita internet: lee los precios q
 `data/`. La primera carga tarda unos segundos porque ajusta el GARCH del mercado; después queda
 memorizado y la navegación es inmediata.
 
-El control **Activos en el universo** de la barra lateral cambia el tamaño de la muestra. Los
-pares crecen con el cuadrado —40 activos son 780 pares, 120 son 7,140— así que súbelo para tener
-más evidencia y bájalo si quieres que responda más rápido.
+La barra lateral define una **cartera** que alimenta a la vez el motor de riesgo y las pruebas
+de estrés, y un control de **tamaño de muestra** para las vistas que recorren pares. Los pares
+crecen con el cuadrado del universo —40 activos son 780 pares, 120 son 7,140— así que súbelo
+para tener más evidencia y bájalo si quieres que responda más rápido.
 
 **Correr las pruebas**
 
@@ -438,7 +495,7 @@ más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-Son 111 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 143 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -463,18 +520,21 @@ datos-masivos-correlacion-sp500/
 │   ├── validation.py             Validación hacia adelante: cuánta historia usar
 │   ├── volatility.py             GARCH(1,1): predicción de volatilidad
 │   ├── nonlinear.py              Información mutua y dependencia de cola
-│   └── cofactors.py              Betas que cambian con el régimen
+│   ├── cofactors.py              Betas que cambian con el régimen
+│   └── stress.py                 VaR, Expected Shortfall y escenarios de crisis
 │
-├── dashboard/                    Tablero local (Streamlit)
-│   ├── app.py                    Siete páginas, una por pregunta del proyecto
+├── dashboard/                    Terminal local (Streamlit)
+│   ├── app.py                    Ocho vistas, una por pregunta del proyecto
+│   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        111 pruebas
+├── tests/                        143 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
 │   ├── test_nonlinear.py         Dependencia no lineal
-│   └── test_cofactors.py         Cofactores
+│   ├── test_cofactors.py         Cofactores
+│   └── test_stress.py            Pruebas de estrés
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas
 │   └── 01_entregable1.ipynb
@@ -562,6 +622,17 @@ uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conserva
 | **Correlación ≠ causalidad** | El co-movimiento puede deberse a un tercer factor común |
 | **Clases de acción duplicadas** | `GOOG`/`GOOGL` y `NWS`/`NWSA` son la misma empresa e inflan el extremo superior |
 
+De los Entregables 3 y 4, cada una medida y no estimada a ojo:
+
+| Limitación | Magnitud medida | Causa |
+|---|---|---|
+| El GARCH subestima los máximos de crisis | 91.4% estimado contra 114.9% realizado en marzo 2020 | Supone innovaciones normales; las colas reales son más pesadas |
+| Ventaja estrecha sobre el estimador ingenuo a un día | Gana en 3 de 5 activos; 0.678 contra 0.625 en XOM | Resultado documentado de la literatura a horizonte corto |
+| La información mutua no detecta no linealidad | 6.0% de los pares supera el piso, contra 5% por azar | Discretizar pierde información y el sesgo residual la agrega |
+| El umbral de régimen usa la muestra completa | 0.25% de las sesiones cambia de lado al recalcular | El cuantil conoce toda la historia; la volatilidad condicional no |
+| Los escenarios de estrés no exceden lo observado | La peor ventana del panel es −33.5% | Reproducen episodios reales; el pasado no agota lo posible |
+| La proyección del choque supone linealidad dentro del régimen | La subestimación relativa no depende del tamaño del choque | El modelo con cofactor es lineal en el rendimiento del mercado |
+
 Las limitaciones propias del Entregable 2 —sesgo de supervivencia agravado en small caps, beta
 medido contra un índice de igual ponderación, y una sola matriz de covarianza para once años— están
 en [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#limitaciones).
@@ -575,7 +646,8 @@ en [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#limitaciones).
 | **1** ✅ | Extracción, diagnóstico, correlación por sector | `src/data.py`, `quality.py`, `returns.py`, `analysis.py` |
 | **2** ✅ | Data lake medallion, universo ampliado a 1,500, factor de mercado, motor de riesgo | `databricks/01` a `06`, `src/risk.py` |
 | **3** ✅ | Validación hacia adelante, GARCH, relaciones no lineales, cofactores y tablero local | `src/validation.py`, `volatility.py`, `nonlinear.py`, `cofactors.py`, `dashboard/` |
-| **4** | Escenarios de estrés usando las betas de régimen ya estimadas, y la red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) | `src/network.py` |
+| **4** ✅ | Pruebas de estrés: VaR y Expected Shortfall históricos, reproducción de episodios reales, riesgo condicional al régimen y proyección de choques con beta condicional | `src/stress.py`, vista del terminal |
+| Siguiente | Red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) y escenarios por factor sectorial | `src/network.py` |
 
 El Entregable 2 se desvió del plan original en dos puntos, y conviene decir por qué:
 

@@ -93,13 +93,3 @@ def to_log_returns(prices: pd.DataFrame) -> pd.DataFrame:
     """
     returns = np.log(prices / prices.shift(1))
     return returns.iloc[1:]
-
-
-def annualize_volatility(returns: pd.DataFrame, periods_per_year: int = 252) -> pd.Series:
-    """Anualiza la desviacion estandar de rendimientos diarios.
-
-    Se escala por la raiz del numero de periodos porque la **varianza** crece
-    de forma lineal con el tiempo, no la desviacion estandar. 252 es el numero
-    aproximado de dias habiles de mercado en un anio.
-    """
-    return returns.std() * np.sqrt(periods_per_year)

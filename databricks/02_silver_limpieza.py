@@ -288,6 +288,59 @@ for f in reales:
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 2.5 Faltantes por año: por qué la forma de contarlos cambia la respuesta
+# MAGIC
+# MAGIC En la tabla ancha de pandas cada ticker tiene una celda por día, y un hueco se
+# MAGIC ve como `NaN`. En `bronze.prices`, que está en formato largo, **un faltante no
+# MAGIC es un nulo: es una fila que no existe**. No hay nada que contar con `isNull`.
+# MAGIC
+# MAGIC La trampa está en definir cuántas filas *debería* haber. Lo intuitivo es
+# MAGIC multiplicar los tickers **de cada año** por los días de ese año, y falla en
+# MAGIC silencio: una empresa que empezó a cotizar en 2019 no tiene ninguna fila en
+# MAGIC 2015, así que tampoco cuenta como esperada en 2015 y su hueco desaparece.
+# MAGIC
+# MAGIC > Medido sobre este panel, esa forma encuentra **5,156** faltantes en lugar de
+# MAGIC > **54,479**, y borra el descenso año con año, que era justo lo que había que
+# MAGIC > mostrar. El error lo detectó Miguel Herrera revisando una versión anterior.
+# MAGIC
+# MAGIC Lo correcto es reconstruir la rejilla completa —todos los tickers del periodo
+# MAGIC por todos los días de mercado— con un `crossJoin`, y clasificar cada hueco
+# MAGIC contra la primera y última cotización de su ticker. Solo los **huecos
+# MAGIC internos** son preocupantes: los otros dos tipos son el ciclo de vida normal
+# MAGIC de una empresa dentro del índice.
+
+# COMMAND ----------
+
+from src.quality import nulos_por_anio_spark
+
+faltantes = nulos_por_anio_spark(spark, f"{BRONZE}.prices")
+display(faltantes)
+
+# COMMAND ----------
+
+filas = faltantes.collect()
+total = sum(f["n_faltantes"] for f in filas)
+internos = sum(f["huecos_internos"] for f in filas)
+
+print("FALTANTES POR AÑO")
+print(f"  {'año':<6}{'esperadas':>12}{'faltantes':>12}{'%':>8}"
+      f"{'previos':>10}{'posteriores':>13}{'internos':>10}")
+for f in filas:
+    print(f"  {f['anio']:<6}{f['esperadas']:>12,}{f['n_faltantes']:>12,}"
+          f"{f['pct_faltantes']:>7.1f}%{f['previos_al_listado']:>10,}"
+          f"{f['posteriores_a_la_baja']:>13,}{f['huecos_internos']:>10,}")
+
+print()
+print(f"  Total de faltantes: {total:,}")
+print(f"  De ellos, huecos internos: {internos:,} ({100 * internos / total:.2f}%)")
+print()
+print("  Los huecos internos son los únicos que indican un problema de datos.")
+print("  Los otros dos tipos son el ciclo de vida de una empresa en el índice:")
+print("  entra al S&P y antes de eso no cotizaba, o sale y deja de cotizar.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 3. El intercambio: cuántas empresas vs cuánta historia
 # MAGIC
 # MAGIC Un **panel balanceado** solo conserva los días en que *todos* los tickers
