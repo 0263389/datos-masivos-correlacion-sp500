@@ -1,0 +1,15 @@
+# Tema del tablero. Se fija claro a proposito: es una herramienta de lectura,
+# y un solo tema bien resuelto se ve mas cuidado que dos a medias.
+[theme]
+base = "light"
+primaryColor = "#0f4c75"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6f9"
+textColor = "#0c1420"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
