@@ -281,3 +281,116 @@ def rolling_correlation(
 
     # Las primeras ``window - 1`` fechas no tienen ventana completa.
     return pair.dropna()
+
+
+# --------------------------------------------------------------------------
+# Correlacion movil a escala: cada accion contra el mercado
+# --------------------------------------------------------------------------
+def rolling_market_correlation(
+    returns: pd.DataFrame, market: pd.Series, window: int = 252
+) -> pd.DataFrame:
+    """Correlacion movil de cada accion contra el mercado.
+
+    ``rolling_correlation`` compara dos acciones, y con 1,211 tickers eso son
+    732,655 pares por 2,903 dias: no cabe. La salida es la misma que usa toda
+    la capa Gold: medir cada accion contra una sola serie, el factor de
+    mercado del notebook 03. El costo pasa de O(n^2) a O(n) y la pregunta
+    sigue contestada, porque lo que empuja a todas a la vez es justamente ese
+    factor comun.
+
+    **Complementa al notebook 06, no lo repite.** Alla la cohesion se mide por
+    mes calendario, en cubetas de ~21 dias que no se traslapan; aqui con una
+    ventana movil de 252. El 06 reacciona rapido y con ruido, esto da una
+    linea suave con resolucion diaria. Los dos numeros no son comparables
+    entre si.
+
+    Hereda la advertencia de ``rolling_correlation``: la ventana es
+    retrospectiva y cada valor se fecha al **final** de ella.
+    """
+    if isinstance(market, pd.DataFrame):
+        if market.shape[1] != 1:
+            raise ValueError(
+                f"``market`` debe ser una serie; llegó un DataFrame de "
+                f"{market.shape[1]} columnas."
+            )
+        market = market.iloc[:, 0]
+
+    # Sin esta validacion un factor que no cubra todo el panel produce NaN en
+    # silencio, y el resultado se ve bien hasta que alguien promedia.
+    sin_factor = returns.index.difference(market.index)
+    if len(sin_factor):
+        raise ValueError(
+            f"El factor de mercado no cubre {len(sin_factor)} fechas del panel "
+            f"(de {sin_factor.min():%Y-%m-%d} a {sin_factor.max():%Y-%m-%d})."
+        )
+
+    rolling = returns.rolling(window).corr(market)
+
+    # Las primeras ``window - 1`` fechas no tienen ventana completa.
+    return rolling.dropna(how="all")
+
+
+def correlation_dispersion(rolling_corr: pd.DataFrame) -> pd.DataFrame:
+    """Que tan de acuerdo estan las acciones entre si, fecha por fecha.
+
+    Mide la **dispersion** de las correlaciones, no su promedio. Son cosas
+    distintas: el promedio dice que tan junto se mueve el mercado; la
+    dispersion dice si ese comportamiento es parejo o si hay acciones que se
+    salen del molde.
+
+    La columna que carga el hallazgo es ``amplitud`` (p90 - p10):
+
+    - Si se **encoge** cuando sube la media, hasta las acciones mas
+      independientes se estan contagiando: la diversificacion se acaba para
+      todos a la vez, no solo para quien ya estaba expuesto.
+    - Si se **mantiene**, hay acciones que aguantan el regimen y diversificar
+      todavia sirve, aunque el promedio asuste.
+
+    ``n_acciones`` esta para descartar un falso positivo: con un panel
+    desbalanceado la dispersion se puede mover solo porque cambio cuantas
+    acciones entran al calculo, no porque el mercado haya cambiado.
+
+    **Antes de concluir algo de ``amplitud``, repitalo sobre
+    ``fisher_z(rolling_corr)``.** La correlacion tiene techo en 1, asi que
+    parte de la compresion es geometrica y no economica. En este panel el
+    signo se invierte al quitar el techo: ver la nota en ``fisher_z``.
+    """
+    p10 = rolling_corr.quantile(0.10, axis=1)
+    p90 = rolling_corr.quantile(0.90, axis=1)
+
+    tabla = pd.DataFrame(
+        {
+            "n_acciones": rolling_corr.notna().sum(axis=1).astype(int),
+            "media": rolling_corr.mean(axis=1),
+            "mediana": rolling_corr.median(axis=1),
+            "desv_est": rolling_corr.std(axis=1),
+            "p10": p10,
+            "p90": p90,
+            "amplitud": p90 - p10,
+        }
+    )
+    tabla.index.name = rolling_corr.index.name or "date"
+
+    # Se filtra por ``media`` y no con un ``dropna()`` general: una fecha con
+    # una sola accion tiene promedio valido y desviacion indefinida, y tirar
+    # esa fila entera esconderia que el panel se quedo sin datos ahi.
+    return tabla[tabla["media"].notna()]
+
+
+def fisher_z(correlations: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
+    """Transformacion de Fisher: ``z = arctanh(r)``.
+
+    Existe por un problema concreto de ``correlation_dispersion``. La
+    correlacion esta acotada en 1, asi que cuando la media sube hacia 1 la
+    dispersion **tiene** que encogerse, por geometria, sin que el mercado
+    haya hecho nada. Medir la dispersion sobre z, que no tiene techo, separa
+    el efecto real del artefacto de escala.
+
+    En este panel la distincion decide el resultado: medida en r, la amplitud
+    se encoge 30% en los periodos de mayor cohesion; medida en z, crece 31%.
+    El signo se invierte. Conviene reportar las dos.
+
+    Los valores de +/-1 exactos se recortan porque ``arctanh(1)`` es
+    infinito. Solo ocurre con una accion que replique al mercado exactamente.
+    """
+    return np.arctanh(correlations.clip(-1 + 1e-9, 1 - 1e-9))
