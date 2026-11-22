@@ -178,6 +178,27 @@ ratio de 1 significa que todas las posiciones se comportan como una sola; el má
 posiciones es √10 ≈ 3.16, y solo si no tuvieran correlación alguna. Diez bancos dan 1.12; diez
 sectores distintos, 1.53.
 
+## Contribución al riesgo
+
+Qué parte del riesgo total del portafolio aporta cada posición. **No es proporcional al dinero
+invertido**: una posición del 5% puede aportar el 30% del riesgo si es volátil y se mueve junto con
+el resto. Las contribuciones suman exactamente el 100%, y no por aproximación sino por el teorema
+de Euler, así que el reparto es exacto.
+
+## Mínima varianza
+
+La combinación de pesos que produce el portafolio menos volátil posible con esos activos. En este
+proyecto se calcula **sin permitir ventas en corto**: la versión libre llegó a posiciones de -155%
+del capital, porque si por ruido cree que dos activos se cancelan, apalanca esa creencia sin
+límite. Exigir pesos positivos actúa como regularización y el portafolio sobrevive mucho mejor
+fuera de muestra.
+
+## Error estándar
+
+El margen de error de una estimación. Mientras más chico, más confiable es el número. Un
+coeficiente se considera significativo cuando es grande comparado con su error estándar —
+concretamente, más de 1.96 veces, que es el corte al 5%.
+
 ---
 
 ## Términos de Databricks
@@ -200,3 +221,162 @@ Python; un *SQL warehouse* solo ejecuta celdas SQL y las celdas de Python fallan
 
 Una carpeta dentro de Databricks que está conectada a un repositorio de GitHub. Permite traer el
 código del repositorio al workspace de Databricks para ejecutarlo ahí.
+
+---
+
+# Términos de los Entregables 3, 4 y 5
+
+Aparecen en el terminal, en los módulos de predicción y riesgo, y en la guía de estudio.
+
+## Volatilidad
+
+Qué tanto se mueve un precio, hacia arriba o hacia abajo. **No mide si gana o pierde**: mide qué
+tan brusco es. Es la desviación estándar de los rendimientos. Se reporta anualizada, multiplicando
+la diaria por la raíz de 252 (los días que abre la bolsa en un año). Va la raíz y no el número
+completo porque lo que crece proporcional al tiempo es la varianza, que es la volatilidad al
+cuadrado. Una acción que se mueve 1% al día tiene 15.87% de volatilidad anual.
+
+## Volatilidad condicional
+
+La volatilidad que el modelo estima para **un día concreto**, usando solo lo que ocurrió antes de
+ese día. Se distingue de la volatilidad "a secas", que es un promedio de todo el periodo y por eso
+no cambia aunque el mercado esté en pánico.
+
+## GARCH
+
+Modelo que predice la volatilidad aprovechando que **viene en rachas**: después de un día movido es
+más probable que venga otro, igual que el clima. La varianza de mañana se arma con tres piezas:
+`ω + α × (golpe de hoy)² + β × (varianza de hoy)`. El golpe va al cuadrado porque importa su tamaño
+y no su dirección. Está implementado a mano en `src/volatility.py`.
+
+## Persistencia
+
+La suma `α + β` del modelo GARCH. Mide **cuánto duran las rachas** de volatilidad. Cerca de 0 no hay
+rachas y el modelo no sirve para predecir; entre 0.95 y 0.99 —lo normal en mercados reales— después
+de un susto el mercado tarda semanas en calmarse; en 1 o más el modelo explota y predice volatilidad
+infinita.
+
+## Variance targeting
+
+Truco de ajuste del GARCH: en lugar de estimar tres parámetros, `ω` se despeja para que la varianza
+de largo plazo del modelo coincida con la observada en los datos. Deja solo dos parámetros que
+buscar, y garantiza que el modelo nunca reporte un nivel de volatilidad que los datos no respaldan.
+
+## Validación hacia adelante (walk-forward)
+
+Método de prueba que simula **ser un inversionista del pasado**: con solo la información disponible
+hasta cierto día arma la cartera, la mantiene un mes, mide lo que realmente pasó, y avanza. Se repite
+con distintas cantidades de historia para encontrar cuál funciona mejor. Lo crucial es que el modelo
+nunca ve el futuro; si lo viera, los resultados saldrían preciosos y serían falsos.
+
+## Look-ahead bias
+
+El error de usar, para predecir una fecha, información que en esa fecha todavía no existía. Produce
+resultados excelentes y completamente falsos. Todo el diseño de `src/validation.py` existe para
+evitarlo.
+
+## Rotación
+
+Qué porcentaje de la cartera hay que mover en cada rebalanceo. Más rotación significa más costos de
+operación, así que una ventana que da poca volatilidad pero exige rotar el 25% cada mes puede no
+convenir en la práctica.
+
+## Información mutua
+
+Medida de dependencia que detecta **cualquier** relación entre dos series, no solo las lineales. Vale
+cero si y solo si son independientes. Existe porque la correlación es, por definición, la pendiente
+de la mejor recta: si la relación tiene forma de U, la correlación da casi cero aunque la relación
+sea perfecta. Se estima discretizando las dos series en casillas por cuantiles.
+
+## Transformación de Fisher
+
+`z = arctanh(r)`. Convierte una correlación, que está acotada entre -1 y 1, en un número sin techo.
+Hace falta al medir **dispersión** de correlaciones: cuando la media sube hacia 1, la dispersión
+tiene que encogerse por geometría, sin que el mercado haya hecho nada. Sobre `z` ese artefacto
+desaparece. En este proyecto el signo del hallazgo se invirtió al aplicarla.
+
+## Dependencia de cola
+
+La probabilidad de que dos activos estén simultáneamente en sus peores días. Si fueran
+independientes sería igual al cuantil elegido (10% con el decil). Mide si **caen juntos**, que es
+justo lo que la correlación promedio no puede distinguir: la correlación es un solo número para toda
+la nube de puntos y es simétrica, así que no puede expresar que las caídas van más sincronizadas que
+las subidas.
+
+## Cofactor
+
+Variable que **modifica el efecto de otra** en lugar de sumar el suyo propio. Entra en el modelo como
+producto: `γ × (r_mercado × tensión)`. El coeficiente γ es el escalón — cuánto cambia la sensibilidad
+al mercado al pasar de calma a crisis.
+
+## Régimen
+
+El estado del mercado. En este proyecto son dos, calma y tensión, y no se eligen a mano: son tensos
+los días en que la volatilidad condicional que estimó el GARCH está en su quintil más alto. Definirlo
+con el modelo y no a criterio evita el grado de libertad de escoger el corte que da el resultado
+conveniente.
+
+## Beta condicional
+
+La beta medida por separado dentro de cada régimen, en vez de un solo número para toda la historia.
+El hallazgo del proyecto es que **converge hacia 1 en las crisis**: las acciones defensivas suben su
+beta y las agresivas la bajan, así que las defensivas dejan de proteger exactamente cuando se
+necesita.
+
+## Heterocedasticidad
+
+Que la varianza del error no sea constante a lo largo del tiempo. Es exactamente lo que el GARCH de
+este proyecto demostró que ocurre, y por eso los errores estándar de mínimos cuadrados de libro —que
+suponen lo contrario— no se pueden usar aquí.
+
+## Errores estándar robustos (White, HC1)
+
+Margen de error calculado **sin** suponer varianza constante: en lugar de una varianza única para
+todos los días, cada día aporta su propio residuo. Hacen falta porque los clásicos subestiman el
+margen —medido en este proyecto, 1.54 veces— lo que infla los estadísticos t y hace parecer
+significativo lo que no lo es.
+
+## Significancia estadística
+
+Que un resultado sea lo bastante grande frente a su margen de error como para no atribuirlo al azar.
+El corte usado en todo el proyecto es el 5%.
+
+## VaR (Valor en Riesgo)
+
+Cuánto puedes perder en un mal día. Más preciso: en el peor 5% de los días, pierdes al menos esa
+cantidad. En este proyecto se calcula **histórico**, leyendo la distribución observada, y no
+suponiendo una campana normal: las colas reales son más gordas que la normal, y un VaR gaussiano
+heredaría ese error justo en la cola que pretende medir.
+
+## Expected Shortfall
+
+El promedio de pérdida de **toda** la cola, no solo de su borde. Acompaña al VaR porque el VaR dice
+cuánto pierdes en el peor 5% de los días *en el mejor de esos casos*, y no dice nada sobre qué tan
+grave puede ser el resto. Por eso el marco regulatorio de Basilea lo adoptó en sustitución del VaR.
+
+## Máxima caída (drawdown)
+
+La pérdida acumulada desde el punto más alto hasta el más bajo posterior. Es la medida que un
+inversionista reconoce de inmediato, porque es la que habría visto en su estado de cuenta: no la de
+un día suelto, sino la del recorrido completo.
+
+## Árbol de expansión mínima
+
+El conjunto mínimo de conexiones que mantiene unido a todo un grafo: exactamente `n − 1` aristas, las
+más cortas posibles, sin ciclos. Aplicado al mercado, reduce 104,653 correlaciones a 457 conexiones,
+y las que sobreviven son las que de verdad sostienen la estructura. Se calcula con el algoritmo de
+Prim, implementado a mano en `src/network.py`.
+
+## Distancia de Mantegna
+
+`d = √(2 × (1 − ρ))`. Convierte una correlación en una distancia: ρ=1 da distancia 0, ρ=0 da 1.414 y
+ρ=−1 da 2. Hace falta porque la correlación no sirve como distancia tal cual, y además cumple la
+desigualdad del triángulo, que es la propiedad que permite meterla a un árbol. Viene de Mantegna
+(1999), *Hierarchical structure in financial markets*.
+
+## Concentrador (hub)
+
+En la red del mercado, un activo que toca muchas más conexiones que el promedio. En un árbol el grado
+promedio es 2 y casi todo son hojas, así que los pocos que se salen son puntos de paso. Un
+concentrador no es el activo más volátil ni el más correlacionado con el índice: es el que, si se
+mueve, arrastra a más vecinos directos.
