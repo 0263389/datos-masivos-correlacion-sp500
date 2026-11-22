@@ -17,7 +17,7 @@ encontrar en cualquier otro sistema. Lo que no se acepta es que aparezca sin
 explicacion: cada termino esta marcado con su definicion, cada columna lleva
 su unidad, y cada metodo esta documentado en su bloque plegable.
 
-Todo el analisis vive en ``src/``, que es la capa con las 111 pruebas. Este
+Todo el analisis vive en ``src/``, que es la capa con las 201 pruebas. Este
 archivo solo presenta.
 """
 
@@ -1434,7 +1434,7 @@ def v_metodo():
     })
 
     E.seccion("04", "Arquitectura",
-              "Todo el análisis reside en src/, cubierto por 111 pruebas. El terminal "
+              "Todo el análisis reside en src/, cubierto por 201 pruebas. El terminal "
               "únicamente presenta: no contiene lógica propia.")
     E.tabla(pd.DataFrame([
         {"m": "src/data.py", "f": "Extracción: Yahoo Finance, Wikipedia, FRED"},

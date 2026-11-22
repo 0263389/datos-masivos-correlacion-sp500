@@ -420,7 +420,7 @@ hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-Deben pasar las **25 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+Deben pasar las **201 pruebas**. En macOS la primera ejecución después de instalar las dependencias
 puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
 más rápidas.
 
