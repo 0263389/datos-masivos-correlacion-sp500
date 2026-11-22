@@ -210,12 +210,18 @@ def v_correlacion(n: int):
             },
         )
 
+    mostrados = min(n, 60)
     E.seccion("02", "Matriz de correlación ordenada por sector",
               "Los tickers se ordenan por sector, de modo que cada sector forma un bloque "
               "contiguo. Los cuadros oscuros sobre la diagonal son esos bloques. La "
-              "diagonal propia se omite: vale 1 por definición y comprimiría la escala.")
+              "diagonal propia se omite: vale 1 por definición y comprimiría la escala. "
+              + (f"Se muestran {mostrados} de los {n} activos de la muestra: por encima "
+                 f"de esa cifra las etiquetas dejan de ser legibles, aunque las cifras "
+                 f"de arriba sí usan la muestra completa."
+                 if n > mostrados else
+                 f"Se muestran los {mostrados} activos de la muestra."))
 
-    matriz = D.matriz_por_sector(min(n, 60))
+    matriz = D.matriz_por_sector(mostrados)
     valores = matriz.to_numpy().astype(float)
     np.fill_diagonal(valores, np.nan)
     lo, hi = np.nanpercentile(valores, [2, 98])
@@ -1290,6 +1296,28 @@ VISTAS = {
 
 CARTERA_INICIAL = ["AAPL", "JPM", "XOM", "KO", "NVDA", "SO", "PG", "UNH"]
 
+# Tope de la muestra por vista, con su motivo. No es uno solo porque el costo
+# no es el mismo: medido sobre el panel de 2,933 sesiones, recorrer los 104,196
+# pares del universo completo toma 3 segundos, mientras que la validacion hacia
+# adelante sobre esos mismos activos toma mas de tres minutos.
+#
+# En la validacion hay ademas un limite estadistico y no solo de tiempo: con N
+# activos la covarianza muestral necesita mas de N observaciones, asi que una
+# ventana de 125 sesiones con 457 activos tiene menos datos que parametros. El
+# encogimiento de Ledoit-Wolf la vuelve invertible, pero el resultado es ruido.
+LIMITES = {
+    "Estructura de correlación": (457, "El recorrido completo de pares toma unos 3 segundos."),
+    "Comportamiento en crisis": (457, "El recorrido completo de pares toma unos 3 segundos."),
+    "Validación del modelo": (
+        250,
+        "Cada ventana reconstruye y evalúa la cartera decenas de veces, así que "
+        "el costo crece mucho más rápido: 250 activos tardan unos 40 segundos y "
+        "el universo completo pasaría de tres minutos. Por encima de ~125 "
+        "activos, además, la ventana más corta tiene menos observaciones que "
+        "parámetros y su estimación deja de ser confiable.",
+    ),
+}
+
 with st.sidebar:
     E.html(
         '<div class="logo"><div class="logo-n">Correlación y Riesgo</div>'
@@ -1302,13 +1330,27 @@ with st.sidebar:
     n_activos, cartera = 40, None
 
     if necesita == "muestra":
+        universo = D.cargar()[0].shape[1]
+        tope, motivo = LIMITES[eleccion]
+        tope = min(tope, universo)
+
         E.html('<div class="lat-tit">Parámetros</div>')
-        n_activos = st.slider("Activos en la muestra", 20, 120, 40, step=10)
+        # El paso de 10 hace que Streamlit redondee el extremo hacia arriba, de
+        # modo que el deslizador puede ofrecer un numero mayor al universo. El
+        # valor efectivo se acota aqui para que lo que se muestra coincida con
+        # lo que se calcula.
+        elegido = st.slider("Activos en la muestra", 20, tope, min(60, tope), step=10)
+        n_activos = min(elegido, universo)
+
+        completo = n_activos >= universo
         E.html(
-            f'<div class="lat-pie">Los pares crecen con el cuadrado del universo: '
-            f'<b>{n_activos}</b> activos son <b>{n_activos * (n_activos - 1) // 2:,}</b> '
-            f'pares. Aumentar la muestra da más evidencia, a costa de tiempo de '
-            f'cálculo.</div>')
+            f'<div class="lat-pie">'
+            + (f'<b>Universo completo</b>: los {universo} activos con historia '
+               f'continua, <b>{universo * (universo - 1) // 2:,}</b> pares.'
+               if completo else
+               f'Los pares crecen con el cuadrado del universo: <b>{n_activos}</b> '
+               f'activos son <b>{n_activos * (n_activos - 1) // 2:,}</b> pares.')
+            + f'<br><br>El máximo de esta vista es <b>{tope}</b>. {motivo}</div>')
 
     elif necesita == "cartera":
         universo = sorted(D.cargar()[0].columns)
