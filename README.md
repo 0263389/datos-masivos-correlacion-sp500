@@ -14,6 +14,17 @@ inspirado en la capa analítica de plataformas de gestión de riesgo como Aladdi
 
 ---
 
+## Guía de estudio
+
+Para entender el proyecto desde cero sin leer el código: **[`docs/Guia_del_proyecto.pdf`](docs/Guia_del_proyecto.pdf)**,
+28 páginas. Cada fórmula viene en tres pasos — qué dice en palabras, la fórmula, y un ejemplo con
+números pequeños que se pueden seguir a mano. Incluye los hallazgos, las limitaciones medidas y
+una chuleta de 18 preguntas con su respuesta.
+
+Todos los ejemplos numéricos de la guía fueron calculados con el código de este repositorio.
+
+---
+
 ## El problema
 
 Cuando se construye un portafolio, el riesgo total **no es la suma de los riesgos individuales**:
