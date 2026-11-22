@@ -172,6 +172,42 @@ cualquier submuestra. El agregado no puede revelar nada; toda la información es
 
 ---
 
+## La red del mercado
+
+De las 104,653 correlaciones del universo, **bastan 457** para mantenerlo conectado: el árbol de
+expansión mínima sobre la métrica de distancia de Mantegna (1999). Es la pregunta del Entregable 1
+hecha de forma más exigente — un promedio alto puede salir de muchas relaciones tibias, pero en el
+esqueleto solo caben las conexiones más fuertes.
+
+> **El 83.2% de esas aristas une activos del mismo sector, contra el 11.0% que caería ahí por
+> azar: 7.6 veces más.** El efecto sectorial pasa de 1.39× sobre la correlación promedio a 7.6×
+> sobre el esqueleto. El sector no solo inclina el promedio: **organiza la estructura**.
+
+| Sector | Aristas | Internas | Proporción |
+|---|---|---|---|
+| Energy | 21 | 19 | **90.5%** |
+| Utilities | 30 | 27 | **90.0%** |
+| Health Care | 56 | 47 | 83.9% |
+| Financials | 104 | 70 | 67.3% |
+| Communication Services | 20 | 7 | **35.0%** |
+
+Energy y Utilities forman bloques casi cerrados. Communication Services es el menos compacto, lo
+cual tiene sentido: agrupa telecomunicaciones, medios y plataformas, que comparten clasificación
+pero no negocio.
+
+**Control de cordura.** Las dos aristas más fuertes son `GOOG–GOOGL` (ρ = 0.995) y `NWSA–NWS`
+(ρ = 0.972): las clases de acción de la misma empresa, que este README ya listaba como limitación.
+El método las encuentra solo, sin que nadie le avise.
+
+**Concentradores.** En un árbol el grado promedio es 2 y casi todo son hojas, pero PH (Industrials)
+toca 13 aristas y PRU, MCO e ITW doce. Un concentrador no es el activo más volátil ni el más
+correlacionado con el índice: es el que, si se mueve, arrastra a más vecinos directos.
+
+El algoritmo de Prim y la disposición de fuerzas de Fruchterman-Reingold están implementados a
+mano en `src/network.py`, por la misma razón que el resto: cada línea es defendible.
+
+---
+
 ## Pruebas de estrés
 
 Cierran el cabo que el Entregable 2 dejó abierto y convierten el tablero en una
@@ -497,7 +533,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-Son 178 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 201 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -542,14 +578,15 @@ datos-masivos-correlacion-sp500/
 │   ├── volatility.py             GARCH(1,1): predicción de volatilidad
 │   ├── nonlinear.py              Información mutua y dependencia de cola
 │   ├── cofactors.py              Betas que cambian con el régimen
-│   └── stress.py                 VaR, Expected Shortfall y escenarios de crisis
+│   ├── stress.py                 VaR, Expected Shortfall y escenarios de crisis
+│   └── network.py                Árbol de expansión mínima y concentradores
 │
 ├── dashboard/                    Terminal local (Streamlit)
-│   ├── app.py                    Ocho vistas, una por pregunta del proyecto
+│   ├── app.py                    Nueve vistas, una por pregunta del proyecto
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        178 pruebas
+├── tests/                        201 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
@@ -557,6 +594,7 @@ datos-masivos-correlacion-sp500/
 │   ├── test_cofactors.py         Cofactores
 │   ├── test_stress.py            Pruebas de estrés
 │   ├── test_analysis.py          Correlación, distancia y dispersión
+│   ├── test_network.py           Red del mercado
 │   └── test_reproducibilidad.py  Fija las cifras publicadas contra el código
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas
@@ -670,7 +708,8 @@ en [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#limitaciones).
 | **2** ✅ | Data lake medallion, universo ampliado a 1,500, factor de mercado, motor de riesgo | `databricks/01` a `06`, `src/risk.py` |
 | **3** ✅ | Validación hacia adelante, GARCH, relaciones no lineales, cofactores y tablero local | `src/validation.py`, `volatility.py`, `nonlinear.py`, `cofactors.py`, `dashboard/` |
 | **4** ✅ | Pruebas de estrés: VaR y Expected Shortfall históricos, reproducción de episodios reales, riesgo condicional al régimen y proyección de choques con beta condicional | `src/stress.py`, vista del terminal |
-| Siguiente | Red de correlación (árbol de expansión mínima sobre la matriz de distancia que ya existe) y escenarios por factor sectorial | `src/network.py` |
+| **5** ✅ | Red de correlación: árbol de expansión mínima, concentradores y pureza sectorial contra el azar | `src/network.py`, vista del terminal |
+| Siguiente | Escenarios de estrés por factor sectorial, y repetir la dispersión de correlación sobre los 1,211 activos de Databricks | — |
 
 El Entregable 2 se desvió del plan original en dos puntos, y conviene decir por qué:
 

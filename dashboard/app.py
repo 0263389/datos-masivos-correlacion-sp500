@@ -241,6 +241,191 @@ def v_correlacion(n: int):
 
 
 # ==========================================================================
+# Red del mercado
+# ==========================================================================
+def v_red(n: int):
+    r = D.red(n)
+    arbol, pur = r["arbol"], r["pureza"]
+    sectores, pos = r["sectores"], r["posiciones"]
+
+    E.cabecera(
+        "Entregable 1 · Estructura de la red",
+        "¿Qué conexiones sostienen al mercado?",
+        f"De las <b>{r['n_posibles']:,}</b> correlaciones posibles, bastan "
+        f"<b>{len(arbol)}</b> para mantener conectado a todo el universo. De esas, "
+        f"el <b>{pur['observado']:.1%}</b> une activos del mismo sector, frente al "
+        f"<b>{pur['esperado_por_azar']:.1%}</b> que caería ahí por azar: "
+        f"<b>{pur['razon']:.1f} veces más</b>.",
+    )
+
+    E.contexto([
+        ("Activos", f"{len(pos)}"),
+        ("Correlaciones posibles", f"{r['n_posibles']:,}"),
+        ("Aristas del esqueleto", f"{len(arbol)}"),
+        ("Método", "Árbol mínimo · Mantegna (1999)"),
+    ])
+
+    E.kpis([
+        {"clave": "Dentro del mismo sector", "valor": f"{pur['observado']:.1%}",
+         "tono": "marca",
+         "detalle": f"{pur['mismo_sector']} de {pur['aristas']} aristas."},
+        {"clave": "Esperado por azar", "valor": f"{pur['esperado_por_azar']:.1%}",
+         "detalle": "Dos activos al azar comparten sector con esta probabilidad."},
+        {"clave": "Razón", "valor": f"{pur['razon']:.1f}", "unidad": "×",
+         "tono": "marca",
+         "detalle": "El Entregable 1 midió 1.39× sobre la correlación promedio."},
+        {"clave": "Mayor número de conexiones", "valor": f"{r['grados']['grado'].max()}",
+         "detalle": f"{r['grados'].iloc[0]['ticker']}. El promedio en un árbol es 2."},
+    ])
+
+    E.nota(
+        f"<p>Es la misma pregunta del Entregable 1, hecha de forma más exigente. "
+        f"Un promedio alto puede salir de muchas relaciones tibias; aquí solo "
+        f"caben las <b>{len(arbol)} conexiones más fuertes</b> del mercado, las "
+        f"mínimas que lo mantienen unido sin ciclos.</p>"
+        f"<p>El efecto sectorial pasa de <b>1.39×</b> sobre la correlación "
+        f"promedio a <b>{pur['razon']:.1f}×</b> sobre el esqueleto. El sector no "
+        f"solo inclina el promedio: <b>organiza la estructura</b>.</p>",
+        "Por qué esto es más fuerte que la correlación promedio", "marca")
+
+    E.seccion("01", "El esqueleto del mercado",
+              "Cada punto es un activo y su color el sector. Las posiciones las "
+              "calcula un método de fuerzas: los conectados se atraen y todos se "
+              "repelen. Nadie le dice al algoritmo que existen los sectores, así "
+              "que si aparecen agrupados, es un hallazgo y no una decisión de "
+              "presentación.")
+
+    import matplotlib.pyplot as plt
+
+    lista_sectores = sorted({s for s in sectores.values() if s})
+    mapa = plt.get_cmap("tab20")
+    color_de = {s: mapa(i % 20) for i, s in enumerate(lista_sectores)}
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+    for f in arbol.itertuples():
+        a, b = pos.loc[f.origen], pos.loc[f.destino]
+        mismo = sectores.get(f.origen) == sectores.get(f.destino)
+        ax.plot([a.x, b.x], [a.y, b.y],
+                color=color_de.get(sectores.get(f.origen), E.TENUE) if mismo else E.LINEA_F,
+                linewidth=1.1 if mismo else .6,
+                alpha=.75 if mismo else .5, zorder=1)
+
+    grado = r["grados"].set_index("ticker")["grado"]
+    ax.scatter(pos["x"], pos["y"],
+               s=14 + 9 * grado.reindex(pos.index).fillna(1),
+               c=[color_de.get(sectores.get(t), E.TENUE) for t in pos.index],
+               edgecolors="white", linewidths=.5, zorder=2)
+
+    for ticker in r["grados"].head(10)["ticker"]:
+        if ticker in pos.index:
+            ax.annotate(ticker, (pos.loc[ticker, "x"], pos.loc[ticker, "y"]),
+                        fontsize=7.5, fontweight="600", color=E.TINTA,
+                        xytext=(4, 4), textcoords="offset points", zorder=3)
+
+    ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+    for s in ax.spines.values():
+        s.set_color(E.LINEA)
+    ax.legend(handles=[plt.Line2D([], [], marker="o", linestyle="", markersize=5,
+                                  color=color_de[s], label=s)
+                       for s in lista_sectores],
+              loc="center left", bbox_to_anchor=(1.0, .5), fontsize=8)
+    E.mostrar(fig)
+    E.html('<div class="sec-sub">El tamaño del punto es el número de '
+                'conexiones. Las líneas grises cruzan sectores; las de color se '
+                'quedan dentro de uno. Se etiquetan los diez concentradores '
+                'principales.</div>')
+
+    izq, der = st.columns([3, 2], gap="medium")
+    with izq:
+        E.seccion("02", "Las conexiones más fuertes",
+                  "Las aristas de menor distancia del esqueleto.")
+        tabla = arbol.head(12).copy()
+        tabla["sector"] = tabla["origen"].map(sectores).fillna("")
+        tabla["mismo"] = [sectores.get(a) == sectores.get(b)
+                          for a, b in zip(tabla["origen"], tabla["destino"])]
+        E.tabla(tabla, {
+            "origen": {"nombre": "A", "tick": True},
+            "destino": {"nombre": "B", "tick": True},
+            "correlacion": {"nombre": "ρ", "fmt": num3, "num": True,
+                            "termino": "correlacion"},
+            "distancia": {"nombre": "Distancia", "nota": "Mantegna",
+                          "fmt": num3, "num": True},
+            "sector": {"nombre": "Sector de A"},
+            "mismo": {"nombre": "Mismo", "fmt": lambda v: E.pildora(v, "SÍ", "no")},
+        })
+        E.nota(
+            "<p>Las dos aristas más fuertes del S&P 500 son <b>GOOG–GOOGL</b> y "
+            "<b>NWSA–NWS</b>: las clases de acción A y C de Alphabet y de News "
+            "Corp. Son la misma empresa, así que su correlación cercana a 1 no "
+            "es información sobre el mercado.</p>"
+            "<p>El método las encuentra solo, sin que nadie le avise, y eso "
+            "confirma que el esqueleto captura lo que debe. El README ya las "
+            "listaba como limitación del Entregable 1.</p>",
+            "Control de cordura", "aviso")
+    with der:
+        E.seccion("03", "Concentradores",
+                  "Activos que el mercado usa como punto de paso.")
+        E.tabla(r["grados"].head(12), {
+            "ticker": {"nombre": "Activo", "tick": True},
+            "sector": {"nombre": "Sector"},
+            "grado": {"nombre": "Conexiones", "fmt": ent, "num": True},
+        })
+        E.nota(
+            "<p>En un árbol el grado promedio es 2 y casi todo son hojas. Un "
+            "concentrador no es el activo más volátil ni el más correlacionado "
+            "con el índice: es el que, si se mueve, <b>arrastra a más vecinos "
+            "directos</b>.</p>", "", "marca")
+
+    E.seccion("04", "Qué tan compacto es cada sector",
+              "Proporción de las aristas que tocan al sector y se quedan dentro "
+              "de él. Alta: bloque cerrado. Baja: repartido por la red.")
+    por_sector = r["por_sector"]
+    izq, der = st.columns([2, 3], gap="medium")
+    with izq:
+        fig, ax = E.lienzo(3.8, 5.2)
+        E.barras(ax, por_sector["sector"], por_sector["proporcion_interna"] * 100,
+                 colores=[E.MARCA] * len(por_sector), fmt="{:.0f}%")
+        ax.set_xlabel("aristas internas (%)")
+        E.mostrar(fig)
+    with der:
+        E.tabla(por_sector, {
+            "sector": {"nombre": "Sector"},
+            "aristas": {"nombre": "Aristas", "nota": "que lo tocan",
+                        "fmt": ent, "num": True},
+            "internas": {"nombre": "Internas", "fmt": ent, "num": True},
+            "proporcion_interna": {"nombre": "Proporción", "fmt": pct0, "num": True},
+            "distancia_media": {"nombre": "Distancia media", "fmt": num3, "num": True},
+        })
+
+    E.detalle("Qué es un árbol de expansión mínima y por qué este", """
+        <p><b>El problema.</b> Con 458 activos hay 104,653 correlaciones. La matriz
+        las contiene todas y por eso no se puede leer: cada activo está conectado con
+        todos los demás, así que no hay estructura visible, solo una nube de números.</p>
+        <p><b>La solución.</b> El árbol de expansión mínima se queda con la cantidad
+        mínima de conexiones que mantiene unido a todo el mercado: exactamente n−1
+        aristas, las más cortas posibles, sin ciclos. Las que sobreviven son las que
+        de verdad sostienen la estructura.</p>
+        <p><b>La distancia.</b> La correlación no sirve como distancia tal cual: ρ=1
+        significa "idénticos" y una distancia debe valer 0 ahí. La métrica de Mantegna
+        (1999) invierte la escala y además cumple la desigualdad del triángulo, que es
+        lo que permite meterla a un árbol:</p>
+        <div class="fx">d(i,j) = √(2 · (1 − ρ(i,j)))
+
+  ρ = +1 → d = 0        ρ = 0 → d ≈ 1.414        ρ = −1 → d = 2</div>
+        <p><b>El algoritmo.</b> Prim, implementado a mano en quince líneas: arranca en
+        un activo y en cada paso agrega la arista más corta que conecta lo que ya está
+        dentro con algo que falta. El resultado no depende del punto de partida
+        mientras no haya empates exactos, cosa que con datos reales no ocurre.</p>
+        <p><b>La referencia contra el azar.</b> El porcentaje observado por sí solo no
+        dice nada, porque algunas aristas caerían dentro del mismo sector aunque se
+        repartieran al azar: los sectores grandes tienen más parejas posibles. La
+        referencia es la probabilidad de que dos activos distintos al azar compartan
+        sector, <code>Σ n_s(n_s−1) / n(n−1)</code>, y es la que aparece en el panel de
+        arriba junto al dato observado.</p>
+    """)
+
+
+# ==========================================================================
 # Descomposición de riesgo
 # ==========================================================================
 def v_riesgo(cartera: dict):
@@ -1262,6 +1447,7 @@ def v_metodo():
         {"m": "src/nonlinear.py", "f": "Información mutua y dependencia de cola"},
         {"m": "src/cofactors.py", "f": "Beta condicional al régimen"},
         {"m": "src/stress.py", "f": "VaR, Expected Shortfall y escenarios de crisis"},
+        {"m": "src/network.py", "f": "Árbol de expansión mínima y concentradores"},
         {"m": "databricks/01–06", "f": "Equivalente a escala de 1,500 activos (PySpark)"},
         {"m": "dashboard/", "f": "Este terminal: estilo, datos y vistas"},
     ]), {"m": {"nombre": "Módulo"}, "f": {"nombre": "Función"}})
@@ -1286,6 +1472,7 @@ def v_metodo():
 VISTAS = {
     "Resumen ejecutivo":         (v_resumen, None),
     "Estructura de correlación": (v_correlacion, "muestra"),
+    "Red del mercado":           (v_red, "muestra"),
     "Motor de riesgo":           (v_riesgo, "cartera"),
     "Volatilidad y pronóstico":  (v_volatilidad, None),
     "Comportamiento en crisis":  (v_crisis, "muestra"),
@@ -1307,6 +1494,11 @@ CARTERA_INICIAL = ["AAPL", "JPM", "XOM", "KO", "NVDA", "SO", "PG", "UNH"]
 # encogimiento de Ledoit-Wolf la vuelve invertible, pero el resultado es ruido.
 LIMITES = {
     "Estructura de correlación": (457, "El recorrido completo de pares toma unos 3 segundos."),
+    "Red del mercado": (
+        457,
+        "El árbol es inmediato; lo que cuesta es colocar los nodos para "
+        "dibujarlos, y aun así el universo completo tarda segundo y medio.",
+    ),
     "Comportamiento en crisis": (457, "El recorrido completo de pares toma unos 3 segundos."),
     "Validación del modelo": (
         250,
@@ -1372,7 +1564,7 @@ with st.sidebar:
     E.html(
         '<div class="lat-pie">Universidad Panamericana · Datos Masivos<br>'
         'Rissotto · Herrera · de la Mora · del Valle<br><br>'
-        'Análisis en <b>src/</b> · <b>178 pruebas</b><br>'
+        'Análisis en <b>src/</b> · <b>201 pruebas</b><br>'
         'Pasa el cursor sobre los términos subrayados para ver su definición.</div>')
 
 if necesita == "muestra":

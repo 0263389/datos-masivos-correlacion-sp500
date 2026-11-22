@@ -24,7 +24,12 @@ if str(RAIZ) not in sys.path:
 
 from src import cofactors as cf  # noqa: E402
 from src import nonlinear as nl  # noqa: E402
-from src.analysis import correlation_matrix, pair_table, sector_comparison  # noqa: E402
+from src.analysis import (  # noqa: E402
+    correlation_matrix,
+    distance_matrix,
+    pair_table,
+    sector_comparison,
+)
 from src.data import get_prices, get_sp500_constituents  # noqa: E402
 from src.returns import to_log_returns  # noqa: E402
 from src.risk import (  # noqa: E402
@@ -33,6 +38,13 @@ from src.risk import (  # noqa: E402
     min_variance_weights_long_only,
     risk_decomposition,
     sample_covariance,
+)
+from src.network import (  # noqa: E402
+    arbol_de_expansion_minima,
+    aristas_por_sector,
+    disposicion,
+    grados,
+    pureza_sectorial,
 )
 from src.stress import (  # noqa: E402
     choque_de_mercado,
@@ -180,6 +192,29 @@ def barrido(n_activos: int) -> pd.DataFrame:
 # ==========================================================================
 # 4. No linealidad y cofactores (Entregable 3)
 # ==========================================================================
+@st.cache_data(ttl=TTL, show_spinner="Construyendo la red del mercado...")
+def red(n_activos: int) -> dict:
+    """Esqueleto del mercado: arbol minimo, concentradores y pureza sectorial.
+
+    Se agrupa en un solo calculo porque todo parte del mismo arbol, y la
+    disposicion de los nodos es lo unico que cuesta -- un segundo y medio para
+    458 activos.
+    """
+    rets, _, sectores = cargar()
+    uni = _muestra(rets.columns, n_activos)
+    distancias = distance_matrix(correlation_matrix(rets[uni]))
+    arbol = arbol_de_expansion_minima(distancias)
+    return {
+        "arbol": arbol,
+        "grados": grados(arbol, sectores),
+        "pureza": pureza_sectorial(arbol, sectores),
+        "por_sector": aristas_por_sector(arbol, sectores),
+        "posiciones": disposicion(arbol),
+        "sectores": sectores,
+        "n_posibles": len(uni) * (len(uni) - 1) // 2,
+    }
+
+
 @st.cache_data(ttl=TTL, show_spinner="Midiendo dependencia no lineal...")
 def no_lineal(n_activos: int) -> tuple[pd.DataFrame, float]:
     rets, cons, sectores = cargar()
