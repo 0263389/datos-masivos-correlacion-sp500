@@ -1,0 +1,15 @@
+# Configuracion de pytest.
+#
+# Existe por una razon concreta. Las pruebas importan `src.algo`, y para que
+# eso funcione la raiz del repositorio tiene que estar en el path de Python.
+# `python -m pytest` la agrega sola, pero el binario `pytest` a secas NO: ahi
+# la recoleccion falla con "ModuleNotFoundError: src" antes de correr una sola
+# prueba, y pytest sale con codigo 2.
+#
+# Paso exactamente eso en integracion continua y costo cuatro corridas en rojo.
+# `pythonpath` lo arregla para las dos formas de invocarlo, de modo que
+# cualquiera del equipo pueda escribir `pytest` sin saber esta trampa.
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

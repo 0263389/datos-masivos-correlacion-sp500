@@ -64,4 +64,8 @@ jobs:
           PY
 
       - name: Correr las pruebas
-        run: pytest tests/ -q --durations=10
+        # `python -m pytest` y no `pytest` a secas: el binario no agrega la
+        # raiz del repositorio al path, y la recoleccion falla con
+        # "ModuleNotFoundError: src". pyproject.toml tambien lo cubre, pero
+        # tener las dos defensas cuesta nada.
+        run: python -m pytest tests/ --durations=10

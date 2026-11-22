@@ -530,7 +530,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 **Correr las pruebas**
 
 ```bash
-.venv/bin/python -m pytest tests/ -q
+.venv/bin/pytest
 ```
 
 Son 201 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
@@ -543,7 +543,7 @@ idéntico: traería un panel distinto al que las cifras de este README describen
 desactiva y usa solo los parquet del repositorio:
 
 ```bash
-SP500_SOLO_RESPALDO=1 .venv/bin/python -m pytest tests/ -q
+SP500_SOLO_RESPALDO=1 .venv/bin/pytest
 ```
 
 Es lo que usa la integración continua, y por eso su resultado coincide exactamente con el local.
