@@ -1372,7 +1372,7 @@ with st.sidebar:
     E.html(
         '<div class="lat-pie">Universidad Panamericana · Datos Masivos<br>'
         'Rissotto · Herrera · de la Mora · del Valle<br><br>'
-        'Análisis en <b>src/</b> · <b>143 pruebas</b><br>'
+        'Análisis en <b>src/</b> · <b>157 pruebas</b><br>'
         'Pasa el cursor sobre los términos subrayados para ver su definición.</div>')
 
 if necesita == "muestra":

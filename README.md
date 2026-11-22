@@ -495,9 +495,15 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/python -m pytest tests/ -q
 ```
 
-Son 143 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 157 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
+
+`test_reproducibilidad.py` hace algo distinto y conviene señalarlo: recorre la cadena completa
+—extracción, panel balanceado, rendimientos, exclusión de datos corruptos, correlación,
+agregación— y **fija las cifras que este README publica**. Si 0.4404 deja de ser 0.4404, la
+prueba falla. Sin ella, todas las piezas pueden estar correctas y una cifra citada haber dejado
+de ser cierta.
 
 ---
 
@@ -528,13 +534,14 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        143 pruebas
+├── tests/                        157 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
 │   ├── test_nonlinear.py         Dependencia no lineal
 │   ├── test_cofactors.py         Cofactores
-│   └── test_stress.py            Pruebas de estrés
+│   ├── test_stress.py            Pruebas de estrés
+│   └── test_reproducibilidad.py  Fija las cifras publicadas contra el código
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas
 │   └── 01_entregable1.ipynb
