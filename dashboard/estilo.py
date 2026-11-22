@@ -26,6 +26,7 @@ supuestos para quien los quiera revisar.
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -544,6 +545,36 @@ def lienzo(alto: float = 3.2, ancho: float = 9.0):
     ax.grid(axis="y")
     ax.grid(axis="x", visible=False)
     return fig, ax
+
+
+def barras(ax, etiquetas, valores, colores=None, fmt="{:+.2f}", alto=.64):
+    """Barras horizontales con el valor escrito al final de cada una.
+
+    Etiquetar directamente evita el recorrido de ida y vuelta al eje para leer
+    una cifra, que es el defecto habitual de una grafica de barras. El eje se
+    conserva como referencia de escala, pero deja de ser indispensable.
+    """
+    y = np.arange(len(valores))
+    v = np.asarray(valores, dtype=float)
+    if colores is None:
+        colores = np.where(v < 0, ALTO, MARCA)
+
+    ax.barh(y, v, color=colores, height=alto)
+    ax.set_yticks(y, etiquetas, fontsize=8.5)
+    ax.invert_yaxis()
+    ax.axvline(0, color=TINTA, linewidth=.9)
+
+    margen = (v.max() - min(v.min(), 0)) * 0.025 or 0.01
+    for i, valor in enumerate(v):
+        ax.text(valor + (margen if valor >= 0 else -margen), i, fmt.format(valor),
+                va="center", ha="left" if valor >= 0 else "right",
+                fontsize=8.5, color=TINTA, fontfamily="monospace")
+
+    lo, hi = min(v.min(), 0), max(v.max(), 0)
+    ancho = (hi - lo) or 1
+    ax.set_xlim(lo - ancho * 0.22, hi + ancho * 0.22)
+    ax.grid(axis="x"); ax.grid(axis="y", visible=False)
+    return ax
 
 
 def mostrar(fig) -> None:

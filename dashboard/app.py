@@ -703,13 +703,9 @@ brecha = ρ equivalente − |ρ de Pearson|</div>
     izq, der = st.columns([2, 3], gap="medium")
     with izq:
         fig, ax = E.lienzo(4.0, 5.4)
-        y = np.arange(len(sec))
-        ax.barh(y, sec["gamma"], color=np.where(sec["gamma"] > 0, E.ALTO, E.BAJO), height=.68)
-        ax.set_yticks(y, sec["sector"], fontsize=8.5)
-        ax.invert_yaxis()
-        ax.axvline(0, color=E.TINTA, linewidth=.9)
-        ax.set_xlabel("γ promedio")
-        ax.grid(axis="x"); ax.grid(axis="y", visible=False)
+        E.barras(ax, sec["sector"], sec["gamma"],
+                 colores=np.where(sec["gamma"] > 0, E.ALTO, E.BAJO), fmt="{:+.3f}")
+        ax.set_xlabel("γ promedio · cambio de beta al tensarse el mercado")
         E.mostrar(fig)
     with der:
         E.tabla(sec, {
@@ -885,16 +881,12 @@ def v_estres(cartera: dict):
             }, clases={"rendimiento": direccion, "caida_maxima": direccion,
                        "peor_dia": direccion})
         with der:
-            fig, ax = E.lienzo(2.9, 5.6)
             orden = esc.sort_values("rendimiento")
-            y = np.arange(len(orden))
-            ax.barh(y, orden["rendimiento"] * 100,
-                    color=np.where(orden["rendimiento"] < 0, E.ALTO, E.BAJO), height=.62)
-            ax.set_yticks(y, orden["escenario"], fontsize=8.5)
-            ax.invert_yaxis()
-            ax.axvline(0, color=E.TINTA, linewidth=.9)
+            fig, ax = E.lienzo(2.9, 5.6)
+            E.barras(ax, orden["escenario"], orden["rendimiento"] * 100,
+                     colores=np.where(orden["rendimiento"] < 0, E.ALTO, E.BAJO),
+                     fmt="{:+.1f}%")
             ax.set_xlabel("resultado acumulado (%)")
-            ax.grid(axis="x"); ax.grid(axis="y", visible=False)
             E.mostrar(fig)
 
     E.seccion("02", "Peores ventanas detectadas en los datos",
@@ -1011,14 +1003,9 @@ def v_estres(cartera: dict):
     with der:
         d = r["detalle"]
         fig, ax = E.lienzo(max(2.4, .33 * len(d) + 1.0), 5.4)
-        y = np.arange(len(d))
-        ax.barh(y, d["error"] * 100,
-                color=np.where(d["error"] < 0, E.ALTO, E.BAJO), height=.62)
-        ax.set_yticks(y, d["ticker"], fontsize=9)
-        ax.invert_yaxis()
-        ax.axvline(0, color=E.TINTA, linewidth=.9)
+        E.barras(ax, d["ticker"], d["error"] * 100,
+                 colores=np.where(d["error"] < 0, E.ALTO, E.BAJO), fmt="{:+.2f}%")
         ax.set_xlabel("pérdida no anticipada (%)")
-        ax.grid(axis="x"); ax.grid(axis="y", visible=False)
         E.mostrar(fig)
 
     peor = r["detalle"].iloc[0]
