@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from src import config
@@ -100,41 +101,87 @@ def find_extreme_returns(
 def flag_suspicious_tickers(
     returns: pd.DataFrame,
     threshold: float | None = None,
-    max_events: int | None = None,
+    tolerancia: float | None = None,
+    dias: int | None = None,
+    max_reversiones: int | None = None,
 ) -> pd.DataFrame:
     """Identifica tickers cuyos datos parecen corruptos, no extremos.
 
-    El criterio distingue dos cosas que se ven iguales en la tabla de
-    rendimientos extremos:
+    El criterio separa dos cosas que en la tabla de rendimientos se ven iguales:
 
-    * **Evento real.** Una empresa se desploma una vez y no se recupera al dia
-      siguiente. Ejemplos encontrados en estos datos: PCG en enero de 2019
-      (bancarrota de PG&E por los incendios de California), APA / OXY / TRGP el
-      9 de marzo de 2020 (guerra de precios del petroleo y desplome de COVID).
-      Estos datos son correctos y deben conservarse.
+    * **Evento real.** Una empresa se desploma y **no se recupera**. Ejemplos en
+      estos datos: PCG en enero de 2019 (bancarrota de PG&E por los incendios de
+      California), APA / OXY / TRGP el 9 de marzo de 2020 (guerra de precios del
+      petroleo). Son datos correctos y deben conservarse.
 
-    * **Error de la fuente.** El precio salta a la mitad y regresa, varias
-      veces, sin ninguna noticia detras. Es un split aplicado de forma
-      inconsistente. Ejemplo encontrado: MNST (Monster Beverage), que oscila
-      entre ~95 y ~47 dolares en dias sueltos de 2026.
+    * **Error de la fuente.** El precio salta a la mitad y **regresa** poco
+      despues, sin ninguna noticia detras. Es un split aplicado de forma
+      inconsistente. Ejemplo: MNST (Monster Beverage), que oscila entre ~95 y
+      ~47 dolares en dias sueltos de 2026.
 
-    La regla que los separa es la **frecuencia**: una empresa real tiene a lo
-    mucho uno o dos eventos de esta magnitud en once anios. Un ticker con siete
-    no esta siendo volatil, esta mal medido.
+    Por que la regla es la reversion y no la frecuencia
+    ---------------------------------------------------
+    La primera version de esta funcion contaba **cuantos** eventos extremos
+    tenia cada ticker y marcaba a los que pasaban de dos. Falla en un caso
+    concreto: una accion que de verdad se mueve muchisimo -GameStop en 2021
+    subio mas de 1,000% en episodios separados- acumula varios eventos que
+    nunca regresan, y el conteo la excluye como si fuera un error de datos.
+
+    Lo que distingue al error no es cuantas veces ocurre sino **si se deshace**.
+    Un split mal aplicado va y vuelve; una quiebra no. Por eso se mira hacia
+    adelante: si dentro de ``dias`` sesiones el precio volvio a menos de
+    ``tolerancia`` de donde estaba antes del salto, ese evento se cuenta como
+    reversion. Mas de ``max_reversiones`` ya es patron y no accidente.
+
+    Es el mismo criterio que aplica ``databricks/02_silver_limpieza.py`` sobre
+    la capa Silver, con los mismos umbrales tomados de ``config``. Tenerlos en
+    un solo lugar evita que las dos implementaciones se separen en silencio,
+    que es justo lo que habia pasado.
+
+    Como se mira hacia adelante sin tener los precios
+    -------------------------------------------------
+    La version de Spark compara el cierre contra el cierre previo al salto.
+    Aqui solo hay rendimientos logaritmicos, y eso basta: su suma acumulada
+    **es** el logaritmo de la razon de precios, de modo que si la suma de los
+    rendimientos desde el dia del salto hasta ``k`` sesiones despues vuelve
+    cerca de cero, el precio volvio cerca de donde estaba.
 
     Returns
     -------
-    DataFrame con: ticker, n_eventos_extremos, sospechoso.
+    DataFrame con ticker, n_eventos_extremos, n_reversiones, n_reales y
+    sospechoso, ordenado por reversiones. Solo incluye tickers con al menos un
+    evento extremo.
     """
     threshold = threshold if threshold is not None else config.EXTREME_RETURN_THRESHOLD
-    max_events = max_events if max_events is not None else config.MAX_EXTREME_EVENTS
+    tolerancia = tolerancia if tolerancia is not None else config.TOLERANCIA_REVERSION
+    dias = dias if dias is not None else config.DIAS_REVERSION
+    max_reversiones = (
+        max_reversiones if max_reversiones is not None else config.MAX_REVERSIONES
+    )
 
-    counts = (returns.abs() > threshold).sum()
-    report = pd.DataFrame({"n_eventos_extremos": counts})
-    report["sospechoso"] = report["n_eventos_extremos"] > max_events
+    extremo = returns.abs() > threshold
+
+    # precio(t+k) / precio(t-1) = exp(suma de los log-rendimientos de t a t+k),
+    # asi que "volvio" equivale a que esa suma acumulada quede cerca de cero.
+    limite = np.log1p(tolerancia)
+    acumulado = returns.copy()
+    revirtio = pd.DataFrame(False, index=returns.index, columns=returns.columns)
+    for k in range(1, dias + 1):
+        acumulado = acumulado + returns.shift(-k)
+        revirtio |= acumulado.abs() < limite
+
+    n_extremos = extremo.sum()
+    n_revertidos = (extremo & revirtio).sum()
+
+    report = pd.DataFrame({
+        "n_eventos_extremos": n_extremos,
+        "n_reversiones": n_revertidos,
+        "n_reales": n_extremos - n_revertidos,
+    })
+    report["sospechoso"] = report["n_reversiones"] > max_reversiones
     report.index.name = "ticker"
     return report[report["n_eventos_extremos"] > 0].sort_values(
-        "n_eventos_extremos", ascending=False
+        ["n_reversiones", "n_eventos_extremos"], ascending=False
     )
 
 

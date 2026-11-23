@@ -420,7 +420,7 @@ hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-Deben pasar las **201 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+Deben pasar las **307 pruebas**. En macOS la primera ejecución después de instalar las dependencias
 puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
 más rápidas.
 
@@ -533,7 +533,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/pytest
 ```
 
-Son 201 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 307 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -586,7 +586,7 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        201 pruebas
+├── tests/                        307 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
@@ -659,15 +659,26 @@ Se encontró un caso real: **`MNST` (Monster Beverage)** oscila entre ~\$95 y ~\
 mitad— en días sueltos de 2026, regresando después. Es un split 2:1 aplicado de forma inconsistente
 por la fuente.
 
-El criterio que lo separa de un evento real es la **frecuencia**: una empresa real tiene a lo mucho
-uno o dos movimientos de ±50% en once años. `MNST` tiene siete. Casos conservados por ser reales:
-`PCG` (bancarrota de PG&E, 2019), `APA`/`OXY`/`TRGP` (guerra de precios del petróleo, marzo 2020),
-`GL` (reporte de vendedores en corto, 2024).
+El criterio que lo separa de un evento real es la **reversión**: un split mal aplicado se deshace,
+un desplome real no. Si dentro de tres sesiones el precio regresa a ±15% de donde estaba antes del
+salto, ese movimiento cuenta como reversión; más de una ya es patrón y no accidente.
 
-> **Este criterio se corrigió en el Entregable 2.** Calibrado sobre el S&P 500 funcionaba, pero al
-> ampliar a 1,500 empresas empezó a descartar eventos reales —`GME` y su *short squeeze* de 2021,
-> mineras de bitcoin, biotecnológicas—. El criterio nuevo distingue por **reversión** y no por
-> frecuencia: un split mal aplicado se deshace, un desplome real no.
+Sobre el panel del Entregable 1 el resultado es: `MNST` tiene 7 movimientos de ±50% de los cuales
+**5 revierten**, y se excluye. `PCG` (bancarrota de PG&E, 2019) tiene 2 y **ninguno** revierte;
+`APA`/`OXY`/`TRGP` (guerra de precios del petróleo, marzo 2020) y `GL` (reporte de vendedores en
+corto, 2024) tienen uno cada uno y tampoco revierten. Todos se conservan.
+
+> **Este criterio reemplazó a uno anterior, y la corrección tardó dos entregables en completarse.**
+> La primera versión contaba la **frecuencia** de movimientos extremos y excluía a cualquiera con
+> más de dos. Calibrada sobre el S&P 500 funcionaba, pero al ampliar a 1,500 empresas empezó a
+> descartar eventos reales: `GME` y su *short squeeze* de 2021, mineras de bitcoin, biotecnológicas.
+>
+> La detección por reversión se implementó en el Entregable 2 **solo del lado de Spark**, y la
+> versión de pandas se quedó con el conteo por frecuencia. Sobre el panel del Entregable 1 ambas
+> daban el mismo resultado —las acciones problemáticas ni siquiera pasan el filtro de historia—, así
+> que la diferencia no se notó. Lo detectó **Miguel Herrera** al escribir las pruebas de
+> `src/quality.py`. Hoy las dos implementaciones comparten los umbrales de `src/config.py`, y hay
+> pruebas que fallan si vuelven a separarse.
 > Ver [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#problemas-de-calidad-encontrados).
 
 ---

@@ -26,6 +26,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pathlib
+import re
+
 import pytest
 
 from src import config, quality
@@ -190,12 +193,23 @@ def _desplome_real() -> list[float]:
     return [100] * 10 + [45] * 10
 
 
+def _volatil_pero_real() -> list[float]:
+    """Tipo GME: varias subidas enormes que NO regresan.
+
+    Es el caso que el criterio por frecuencia clasificaba mal. GameStop subio
+    mas de 1,000% en 2021 en episodios separados, y cada nivel se sostuvo. Son
+    datos correctos por mas extremos que parezcan.
+    """
+    return [10] * 5 + [25] * 5 + [60] * 5 + [150] * 5
+
+
 class TestFlagSuspiciousTickers:
     @pytest.fixture
     def rendimientos(self):
         return log_rendimientos(panel({
             "MNST": _split_mal_aplicado(),
             "PCG": _desplome_real(),
+            "GME": _volatil_pero_real(),
             "KO": [100] * 20,
         }))
 
@@ -203,11 +217,27 @@ class TestFlagSuspiciousTickers:
         """El caso que motivo el criterio: MNST en el Entregable 1.
 
         Cada ida y vuelta son dos movimientos de +/-69%, asi que tres
-        oscilaciones dan seis eventos. Ninguna empresa real hace eso.
+        oscilaciones dan seis eventos. Lo que lo delata no es cuantos son sino
+        que el precio **regresa** cada vez.
         """
         reporte = quality.flag_suspicious_tickers(rendimientos)
         assert reporte.loc["MNST", "n_eventos_extremos"] == 6
+        assert reporte.loc["MNST", "n_reversiones"] >= 3
         assert reporte.loc["MNST", "sospechoso"]
+
+    def test_conserva_una_accion_muy_volatil_pero_correcta(self, rendimientos):
+        """El caso que el criterio por frecuencia clasificaba mal.
+
+        Tres subidas de mas del 100% que nunca se deshacen. Contando eventos,
+        son tres y se excluiria; mirando reversiones, son cero y se conserva.
+        Detectado por Miguel Herrera al escribir estas pruebas: el criterio de
+        reversion vivia solo en el notebook de Spark, y la version de pandas
+        habia quedado con el criterio viejo.
+        """
+        reporte = quality.flag_suspicious_tickers(rendimientos)
+        assert reporte.loc["GME", "n_eventos_extremos"] >= 3
+        assert reporte.loc["GME", "n_reversiones"] == 0
+        assert not reporte.loc["GME", "sospechoso"]
 
     def test_conserva_un_desplome_real(self, rendimientos):
         """Un solo desplome es un evento, no un error de la fuente.
@@ -220,19 +250,25 @@ class TestFlagSuspiciousTickers:
         assert reporte.loc["PCG", "n_eventos_extremos"] == 1
         assert not reporte.loc["PCG", "sospechoso"]
 
-    def test_tolera_hasta_dos_eventos(self):
-        """``n_eventos > MAX_EXTREME_EVENTS``: con exactamente dos no se marca.
+    def test_tolera_una_reversion_suelta(self):
+        """``n_reversiones > MAX_REVERSIONES``: con exactamente una no se marca.
 
-        La regla documentada es "a lo mucho uno o dos eventos en once anios".
-        Si la comparacion se volviera ``>=``, un ticker con dos eventos reales
-        quedaria fuera sin que ninguna otra prueba lo note.
+        Una reversion aislada puede ser un dato malo suelto y no un split mal
+        aplicado. Si la comparacion se volviera ``>=``, un ticker con un solo
+        tropiezo quedaria fuera sin que ninguna otra prueba lo note.
         """
         rendimientos = log_rendimientos(panel({
-            "DOS": [100] * 5 + [45] * 5 + [20] * 5,
+            "UNA": [100] * 5 + [45, 100] + [100] * 8,
         }))
         reporte = quality.flag_suspicious_tickers(rendimientos)
-        assert reporte.loc["DOS", "n_eventos_extremos"] == config.MAX_EXTREME_EVENTS
-        assert not reporte.loc["DOS", "sospechoso"]
+        assert reporte.loc["UNA", "n_reversiones"] == config.MAX_REVERSIONES
+        assert not reporte.loc["UNA", "sospechoso"]
+
+    def test_los_eventos_se_reparten_entre_reales_y_revertidos(self, rendimientos):
+        """Identidad de la tabla: cada evento extremo es una cosa o la otra."""
+        reporte = quality.flag_suspicious_tickers(rendimientos)
+        suma = reporte["n_reversiones"] + reporte["n_reales"]
+        assert (suma == reporte["n_eventos_extremos"]).all()
 
     def test_omite_los_tickers_sin_eventos(self, rendimientos):
         reporte = quality.flag_suspicious_tickers(rendimientos)
@@ -243,8 +279,22 @@ class TestFlagSuspiciousTickers:
         assert reporte.index[0] == "MNST"
 
     def test_respeta_los_parametros(self, rendimientos):
-        reporte = quality.flag_suspicious_tickers(rendimientos, max_events=10)
+        reporte = quality.flag_suspicious_tickers(rendimientos, max_reversiones=10)
         assert not reporte["sospechoso"].any()
+
+    def test_una_reversion_mas_lenta_tambien_cuenta(self):
+        """El regreso no siempre ocurre al dia siguiente.
+
+        Por eso se miran tres sesiones hacia adelante y no solo una. Aqui el
+        precio tarda dos dias en volver, y debe detectarse igual.
+        """
+        rendimientos = log_rendimientos(panel({
+            "LENTO": [100] * 4 + [45, 60, 100] + [100] * 4
+                     + [45, 60, 100] + [100] * 4,
+        }))
+        reporte = quality.flag_suspicious_tickers(rendimientos)
+        assert reporte.loc["LENTO", "n_reversiones"] >= 2
+        assert reporte.loc["LENTO", "sospechoso"]
 
 
 # ==========================================================================
@@ -571,3 +621,46 @@ class TestCifrasPublicadas:
         assert resumen.index[0] == "Communication Services"
         assert resumen.loc["Communication Services", "descartados"] == 5
         assert resumen.loc["Communication Services", "tickers"] == 24
+
+
+# ==========================================================================
+# Coherencia entre las dos implementaciones del criterio
+# ==========================================================================
+class TestLosDosCriteriosNoSePuedenSeparar:
+    """El mismo criterio vive en dos sitios y tiene que decir lo mismo.
+
+    ``src/quality.py`` lo aplica sobre pandas para el Entregable 1 y
+    ``databricks/02_silver_limpieza.py`` sobre Spark para el 2. Ya se
+    separaron una vez: el notebook adopto la deteccion por reversion y la
+    version de pandas se quedo con el conteo por frecuencia, de modo que una
+    accion muy volatil pero correcta quedaba marcada como dato corrupto segun
+    por donde se mirara. Lo encontro Miguel Herrera escribiendo las pruebas de
+    este modulo.
+
+    Estas pruebas leen el notebook como texto y comparan sus umbrales contra
+    los de ``config``. No pueden ejecutar Spark, pero si pueden impedir que los
+    numeros vuelvan a divergir en silencio.
+    """
+
+    NOTEBOOK = pathlib.Path(__file__).resolve().parents[1] / "databricks" / "02_silver_limpieza.py"
+
+    def _constante(self, nombre: str) -> float:
+        texto = self.NOTEBOOK.read_text(encoding="utf-8")
+        hallado = re.search(rf"^{nombre}\s*=\s*([0-9.]+)", texto, re.M)
+        assert hallado, f"{nombre} no esta definida en {self.NOTEBOOK.name}"
+        return float(hallado.group(1))
+
+    def test_el_notebook_existe(self):
+        assert self.NOTEBOOK.is_file()
+
+    def test_mismo_umbral_de_evento_extremo(self):
+        assert self._constante("UMBRAL_EXTREMO") == config.EXTREME_RETURN_THRESHOLD
+
+    def test_misma_tolerancia_de_reversion(self):
+        assert self._constante("TOLERANCIA_REVERSION") == config.TOLERANCIA_REVERSION
+
+    def test_mismos_dias_para_revertir(self):
+        assert self._constante("DIAS_PARA_REVERTIR") == config.DIAS_REVERSION
+
+    def test_mismo_maximo_de_reversiones(self):
+        assert self._constante("MAX_REVERSIONES") == config.MAX_REVERSIONES

@@ -111,15 +111,16 @@ MIN_OBSERVATIONS = 2900  # ~99% del periodo 2015-2026
 # Umbral de rendimiento diario a partir del cual el dato es sospechoso.
 EXTREME_RETURN_THRESHOLD = 0.50
 
-# Numero de eventos extremos que tolera un ticker antes de considerarse corrupto.
+# Deteccion de datos corruptos por reversion. Un movimiento extremo cuenta como
+# error de la fuente solo si el precio REGRESA a donde estaba poco despues: un
+# split aplicado de forma inconsistente va y vuelve, mientras que una quiebra o
+# un desplome de verdad no se deshacen.
 #
-# Criterio empirico observado en los datos: una empresa real tiene a lo mucho un
-# evento de +/-50% en once anios (una bancarrota, un desplome sectorial, un
-# reporte de vendedores en corto). Un ticker con muchos de esos, y ademas
-# reversibles, tiene un split mal aplicado por la fuente. Ejemplo real
-# encontrado: MNST (Monster Beverage) oscila entre ~95 y ~47 dolares -
-# exactamente la mitad - en dias sueltos de julio y agosto de 2026.
-MAX_EXTREME_EVENTS = 2
+# Son los mismos valores que usa databricks/02_silver_limpieza.py, y estan aqui
+# para que las dos implementaciones no puedan separarse sin que se note.
+TOLERANCIA_REVERSION = 0.15   # volver a +/-15% del precio previo cuenta como regreso
+DIAS_REVERSION = 3            # la reversion no siempre ocurre al dia siguiente
+MAX_REVERSIONES = 1           # mas de una ya es patron, no accidente
 
 # --------------------------------------------------------------------------
 # Archivos de cache
