@@ -296,6 +296,24 @@ class TestFlagSuspiciousTickers:
         assert reporte.loc["LENTO", "n_reversiones"] >= 2
         assert reporte.loc["LENTO", "sospechoso"]
 
+    def test_el_umbral_es_el_mismo_porcentaje_que_en_spark(self):
+        """El 15% se mide sobre el precio, no sobre el logaritmo.
+
+        Caso limite: la accion cae a 45 y rebota a 86, o sea queda 14% abajo
+        del precio previo. Spark lo cuenta como reversion porque 0.14 < 0.15.
+        Medido en logaritmos no lo contaria, porque log(0.86) = -0.151 pasa de
+        log(1.15) = 0.140. Las dos capas tienen que dar lo mismo.
+
+        Son dos eventos extremos (la caida y el rebote) pero una sola
+        reversion, asi que con MAX_REVERSIONES = 1 el ticker no sale
+        sospechoso. Por eso la asercion va sobre ``n_reversiones``.
+        """
+        rendimientos = log_rendimientos(panel({
+            "BORDE": [100] * 4 + [45, 86, 86, 86, 86],
+        }))
+        reporte = quality.flag_suspicious_tickers(rendimientos)
+        assert reporte.loc["BORDE", "n_reversiones"] == 1
+
 
 # ==========================================================================
 # calendar_gaps

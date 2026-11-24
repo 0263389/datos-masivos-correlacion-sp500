@@ -146,6 +146,13 @@ def flag_suspicious_tickers(
     rendimientos desde el dia del salto hasta ``k`` sesiones despues vuelve
     cerca de cero, el precio volvio cerca de donde estaba.
 
+    Para que "cerca" signifique lo mismo que en Spark, esa suma se convierte
+    de vuelta a cambio porcentual con ``expm1`` antes de compararla contra
+    ``tolerancia``. Comparar el logaritmo directo contra ``log(1 + tolerancia)``
+    parece equivalente pero no lo es: arriba corta en +15%, y abajo en -13%
+    en vez de -15%, porque una caida del 15% mide 0.163 en logaritmos y no
+    0.140. El mismo umbral significaria dos cosas segun el lado.
+
     Returns
     -------
     DataFrame con ticker, n_eventos_extremos, n_reversiones, n_reales y
@@ -162,13 +169,13 @@ def flag_suspicious_tickers(
     extremo = returns.abs() > threshold
 
     # precio(t+k) / precio(t-1) = exp(suma de los log-rendimientos de t a t+k),
-    # asi que "volvio" equivale a que esa suma acumulada quede cerca de cero.
-    limite = np.log1p(tolerancia)
+    # asi que expm1 de esa suma es el cambio porcentual del precio: la misma
+    # cantidad que compara Spark contra TOLERANCIA_REVERSION.
     acumulado = returns.copy()
     revirtio = pd.DataFrame(False, index=returns.index, columns=returns.columns)
     for k in range(1, dias + 1):
         acumulado = acumulado + returns.shift(-k)
-        revirtio |= acumulado.abs() < limite
+        revirtio |= np.expm1(acumulado).abs() < tolerancia
 
     n_extremos = extremo.sum()
     n_revertidos = (extremo & revirtio).sum()
