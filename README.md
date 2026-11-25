@@ -5,6 +5,14 @@ semestre
 
 [![pruebas](https://github.com/0263389/datos-masivos-correlacion-sp500/actions/workflows/pruebas.yml/badge.svg)](https://github.com/0263389/datos-masivos-correlacion-sp500/actions/workflows/pruebas.yml)
 
+### ▶ [Abrir el terminal en el navegador](https://datos-masivos-correlacion-sp500-pxihyahmrvmqputvrgcnox.streamlit.app/)
+
+Sin instalar nada. Es el mismo tablero que se levanta en local, publicado en Streamlit Community
+Cloud desde esta rama. Si lleva doce horas sin visitas se duerme: la primera carga puede tardar
+medio minuto en despertarlo, y a partir de ahí responde normal.
+
+---
+
 Motor de análisis de estructura de correlación y riesgo para los componentes del S&P 500,
 inspirado en la capa analítica de plataformas de gestión de riesgo como Aladdin (BlackRock).
 
@@ -509,6 +517,9 @@ El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
 > que depende de la cuenta — ver [Acceso a internet desde Databricks](#acceso-a-internet-desde-databricks).
 
 **Abrir el tablero**
+
+Para solo verlo, no hace falta nada de lo anterior: está publicado en
+[Streamlit Community Cloud](https://datos-masivos-correlacion-sp500-pxihyahmrvmqputvrgcnox.streamlit.app/). Lo que sigue es para correrlo en local.
 
 El terminal recorre todo el proyecto: una vista por pregunta, con la respuesta en una frase
 antes del primer número, la unidad de cada columna a la vista y la metodología plegada en
