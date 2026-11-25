@@ -420,7 +420,7 @@ hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-Deben pasar las **308 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+Deben pasar las **309 pruebas**. En macOS la primera ejecución después de instalar las dependencias
 puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
 más rápidas.
 
@@ -518,9 +518,15 @@ cada sección. Los términos técnicos se conservan y muestran su definición al
 .venv/bin/streamlit run dashboard/app.py
 ```
 
-Se abre solo en `http://localhost:8501`. No necesita internet: lee los precios que ya están en
-`data/`. La primera carga tarda unos segundos porque ajusta el GARCH del mercado; después queda
-memorizado y la navegación es inmediata.
+Se abre solo en `http://localhost:8501`. No necesita internet: los precios **y el mapa de
+sectores** salen del respaldo versionado en `data/processed/`, no de una descarga en vivo. Eso es
+deliberado y no una comodidad: el tablero publica las cifras de un panel congelado, y la
+composición del S&P 500 cambia. Si bajara la lista de hoy, los tickers del panel que ya salieron
+del índice se quedarían sin sector y desaparecerían de la comparación sectorial sin avisar —
+medido sobre un clon recién hecho con internet, cuatro de ellos.
+
+La primera carga tarda unos segundos porque ajusta el GARCH del mercado; después queda memorizado
+y la navegación es inmediata.
 
 La barra lateral define una **cartera** que alimenta a la vez el motor de riesgo y las pruebas
 de estrés, y un control de **tamaño de muestra** para las vistas que recorren pares. Los pares
@@ -533,7 +539,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/pytest
 ```
 
-Son 308 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 309 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -586,7 +592,7 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        308 pruebas
+├── tests/                        309 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH

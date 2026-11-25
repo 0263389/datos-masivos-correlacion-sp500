@@ -518,6 +518,30 @@ class TestRespaldosDelRepositorio:
         monkeypatch.setattr(modulo_data.config, "CONSTITUENTS_CACHE", tmp_path / "a.parquet")
         monkeypatch.setattr(modulo_data.config, "SP1500_CONSTITUENTS_CACHE", tmp_path / "b.parquet")
 
+    def test_el_cache_se_puede_fijar_desde_afuera(self, monkeypatch, tmp_path):
+        """``cache`` permite congelar la fuente, y es lo que usa el tablero.
+
+        El tablero y ``test_reproducibilidad`` publican cifras de un panel
+        congelado, asi que necesitan el mapa de sectores de ese momento y no el
+        de hoy. Sin poder fijar la ruta, en una maquina con internet y sin cache
+        se bajaria la lista actual del indice y los tickers del panel que ya
+        salieron se quedarian sin sector.
+        """
+        monkeypatch.setattr(modulo_data.config, "SOLO_RESPALDO", False)
+        elegido = tmp_path / "elegido.parquet"
+        pd.DataFrame({
+            "ticker": ["AAA"], "company": ["Prueba"],
+            "sector": ["Energy"], "sub_industry": ["Prueba"],
+        }).to_parquet(elegido)
+
+        def no_debe_descargar():
+            raise AssertionError("se intento descargar teniendo cache fijado")
+
+        monkeypatch.setattr(modulo_data, "_download_constituents", no_debe_descargar)
+        empresas = modulo_data.get_sp500_constituents(cache=elegido)
+
+        assert empresas["ticker"].tolist() == ["AAA"]
+
     def test_sp500_trae_las_cuatro_columnas(self):
         empresas = modulo_data.get_sp500_constituents()
 

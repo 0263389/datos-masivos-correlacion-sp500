@@ -23,6 +23,7 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
 from src import cofactors as cf  # noqa: E402
+from src import config  # noqa: E402
 from src import nonlinear as nl  # noqa: E402
 from src.analysis import (  # noqa: E402
     correlation_matrix,
@@ -101,10 +102,20 @@ def cargar() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
 
     Por que este universo tiene 457 activos y el del Entregable 1 tiene 458
     esta explicado en el README, seccion "Dos universos".
+
+    Las dos fuentes se fijan al respaldo versionado y no al cache local, por la
+    misma razon que en ``tests/test_reproducibilidad.py``: el tablero publica
+    las cifras de un panel **congelado**, y la composicion del S&P 500 cambia.
+    Sin fijarlo, un despliegue nuevo con internet -Streamlit Cloud, o el clon de
+    quien revisa el proyecto- bajaria la lista de hoy, y los tickers del panel
+    que ya salieron del indice se quedarian sin sector y desapareceran de la
+    comparacion sectorial sin avisar. Medido sobre un clon limpio: cuatro.
     """
-    cons = get_sp500_constituents()
+    cons = get_sp500_constituents(cache=config.CONSTITUENTS_FALLBACK)
     sectores = dict(zip(cons["ticker"], cons["sector"]))
-    rets = to_log_returns(get_prices([])).dropna(axis=1, how="any").dropna()
+    rets = to_log_returns(
+        get_prices([], cache=config.PRICES_FALLBACK)
+    ).dropna(axis=1, how="any").dropna()
 
     sospechosos = flag_suspicious_tickers(rets)
     corruptos = sospechosos.index[sospechosos["sospechoso"]]

@@ -19,8 +19,21 @@ Las tolerancias son estrictas a proposito. Una diferencia en el cuarto decimal
 no es ruido de punto flotante: significa que el conjunto de activos o el
 periodo cambiaron.
 
-Dependen de los datos en cache
-------------------------------
+De donde salen los datos
+------------------------
+Siempre del respaldo versionado en ``data/processed/``, nunca de una descarga
+en vivo ni del cache local. No es un detalle: las cifras de abajo describen un
+conjunto **congelado**, y la composicion del S&P 500 cambia. Al probarlo sobre
+un clon limpio con internet, Wikipedia devolvio siete empresas que entraron al
+indice y siete que salieron desde que se congelo el panel; los precios seguian
+viniendo del respaldo, asi que siete tickers del panel se quedaron sin sector y
+los pares clasificados bajaron de 104,653 a 102,831.
+
+Esa es la falla que estas pruebas tienen que descartar, no producir. Por eso el
+fixture ``datos_congelados`` enciende ``SOLO_RESPALDO`` y ademas apunta los
+caches a una ruta inexistente: sin lo segundo el cache ganaria, y en una maquina
+que alguna vez descargo en vivo el resultado dependeria de cuando lo hizo.
+
 Se omiten solas si ``data/`` no esta disponible, de modo que quien clone el
 repositorio sin los parquet pueda correr el resto de la bateria sin fallos.
 """
@@ -45,6 +58,26 @@ PARES = 104_653
 CORR_MISMO_SECTOR = 0.4404
 CORR_DISTINTO_SECTOR = 0.3164
 EXCLUIDOS_POR_CORRUPCION = ["MNST"]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def datos_congelados(tmp_path_factory):
+    """Obliga a leer el respaldo del repositorio y nada mas.
+
+    ``SOLO_RESPALDO`` por si solo no basta: ``_load_with_fallback`` consulta el
+    cache antes que la bandera -decision deliberada, probada en
+    ``test_data.py::test_en_modo_respaldo_el_cache_gana_al_respaldo``-, asi que
+    tambien se apuntan los caches a un directorio vacio. El resultado es el
+    mismo en integracion continua, en un clon recien hecho y en la maquina de
+    quien descargo precios el mes pasado.
+    """
+    vacio = tmp_path_factory.mktemp("sin_cache")
+    parche = pytest.MonkeyPatch()
+    parche.setattr(config, "SOLO_RESPALDO", True)
+    parche.setattr(config, "PRICES_CACHE", vacio / "precios.parquet")
+    parche.setattr(config, "CONSTITUENTS_CACHE", vacio / "constituyentes.parquet")
+    yield
+    parche.undo()
 
 
 @pytest.fixture(scope="module")

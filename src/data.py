@@ -126,16 +126,28 @@ def _download_constituents() -> pd.DataFrame:
     )
 
 
-def get_sp500_constituents(force_refresh: bool = False) -> pd.DataFrame:
+def get_sp500_constituents(
+    force_refresh: bool = False,
+    cache: Path | None = None,
+    fallback: Path | None = None,
+) -> pd.DataFrame:
     """Descarga la tabla de empresas del S&P 500 con su sector GICS.
+
+    ``cache`` y ``fallback`` existen por la misma razon que en ``get_prices``:
+    permiten fijar la fuente desde afuera. Quien publica una cifra sobre el
+    panel congelado necesita el mapa de sectores de ese mismo momento, no el de
+    hoy. La composicion del indice cambia -al probarlo sobre un clon limpio,
+    Wikipedia traia siete altas y siete bajas desde que se congelo el panel-, y
+    un ticker que ya no cotiza en el indice se queda sin sector y desaparece de
+    la comparacion sectorial sin avisar.
 
     Returns
     -------
     DataFrame con columnas: ticker, company, sector, sub_industry.
     """
     return _load_with_fallback(
-        cache=config.CONSTITUENTS_CACHE,
-        fallback=config.CONSTITUENTS_FALLBACK,
+        cache=cache or config.CONSTITUENTS_CACHE,
+        fallback=fallback or config.CONSTITUENTS_FALLBACK,
         download=_download_constituents,
         label="Wikipedia / constituyentes",
         force_refresh=force_refresh,
