@@ -121,8 +121,41 @@ def aplicar_estilo() -> None:
     padding: 1.1rem 2.2rem 4rem; max-width: 1340px;
     font-size: 13.5px; line-height: 1.55;
   }}
-  header[data-testid="stHeader"] {{ display: none; }}
+  /* La cabecera de Streamlit se neutraliza, pero NO se esconde: cuando la
+     barra lateral esta plegada, Streamlit pone ahi dentro el unico boton que
+     la reabre. Con display:none ese boton deja de existir y el tablero se
+     queda sin menu y sin forma de recuperarlo. Asi que se le quita el fondo
+     y la altura, se desactivan los clics en toda la cabecera, y se vuelven a
+     activar solo en ese boton. */
+  header[data-testid="stHeader"] {{
+    background: transparent; box-shadow: none;
+    pointer-events: none;
+  }}
+  /* Fuera los controles de Streamlit, pero NO la cabecera entera. */
+  header[data-testid="stHeader"] [data-testid="stToolbarActions"],
+  header[data-testid="stHeader"] [data-testid="stAppDeployButton"],
+  header[data-testid="stHeader"] [data-testid="stMainMenu"] {{ display: none !important; }}
   #MainMenu, footer {{ visibility: hidden; }}
+
+  /* Unico control que sobrevive en la cabecera, y el motivo de todo lo de
+     arriba: con la barra lateral plegada es la unica forma de reabrirla. Se
+     pinta del color de la barra para que se lea como su pestania. */
+  button[data-testid="stExpandSidebarButton"] {{
+    pointer-events: auto;
+    background: var(--noche) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    width: 34px !important; height: 38px !important;
+    margin: 10px 0 0 0 !important;
+    box-shadow: 0 2px 10px rgba(12,20,32,.22);
+  }}
+  button[data-testid="stExpandSidebarButton"]:hover {{
+    background: var(--noche2) !important;
+  }}
+  button[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"] {{
+    color: #fff !important;
+  }}
   h1,h2,h3,h4 {{ font-family: var(--sans); letter-spacing: -.012em; color: var(--tinta); }}
 
   /* barra lateral oscura */

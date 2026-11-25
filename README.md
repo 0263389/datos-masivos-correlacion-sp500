@@ -428,7 +428,7 @@ hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-Deben pasar las **309 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+Deben pasar las **316 pruebas**. En macOS la primera ejecución después de instalar las dependencias
 puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
 más rápidas.
 
@@ -550,7 +550,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/pytest
 ```
 
-Son 309 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 316 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -603,7 +603,7 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        309 pruebas
+├── tests/                        316 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
@@ -613,6 +613,7 @@ datos-masivos-correlacion-sp500/
 │   ├── test_analysis.py          Correlación, distancia y dispersión
 │   ├── test_network.py           Red del mercado
 │   ├── test_quality.py           Calidad de datos y detección de corrupción
+│   ├── test_estilo.py            Hoja de estilos del tablero
 │   ├── test_data.py              Descarga, caché y respaldo
 │   ├── test_returns.py           Panel balanceado y rendimientos
 │   └── test_reproducibilidad.py  Fija las cifras publicadas contra el código
