@@ -58,8 +58,15 @@ SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "")
 START_DATE = "2015-01-01"
 END_DATE = None  # None = hasta el dia mas reciente disponible
 
-# Ticker del indice, usado como referencia del "mercado".
-MARKET_TICKER = "^GSPC"  # indice S&P 500
+# No hay un ticker del indice. El "mercado" de este proyecto es el promedio
+# equiponderado de los activos del panel, que calcula `cofactors.mercado`.
+#
+# Es una decision, no una omision: el S&P 500 pondera por capitalizacion, y
+# sin capitalizaciones actualizadas dia por dia no se puede reproducir esa
+# ponderacion. Un indice descargado tampoco serviria como referencia limpia,
+# porque contendria empresas que no estan en el panel. El promedio simple de
+# los mismos activos que se analizan es la referencia honesta, y tiene una
+# consecuencia util: la beta promedio contra el vale exactamente 1.
 
 # Fuente de la lista de constituyentes y su clasificacion sectorial GICS.
 SP500_WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -130,7 +137,6 @@ MAX_REVERSIONES = 1           # mas de una ya es patron, no accidente
 PRICES_CACHE = RAW_DIR / "sp500_prices.parquet"
 CONSTITUENTS_CACHE = RAW_DIR / "sp500_constituents.parquet"
 SP1500_CONSTITUENTS_CACHE = RAW_DIR / "sp1500_constituents.parquet"
-SP1500_PRICES_CACHE = RAW_DIR / "sp1500_prices.parquet"
 MACRO_CACHE = RAW_DIR / "macro_fred.parquet"
 
 # Respaldo que SI viaja con el repositorio (data/processed/ no esta ignorado).

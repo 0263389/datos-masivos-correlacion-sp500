@@ -309,6 +309,15 @@ Variable que **modifica el efecto de otra** en lugar de sumar el suyo propio. En
 producto: `γ × (r_mercado × tensión)`. El coeficiente γ es el escalón — cuánto cambia la sensibilidad
 al mercado al pasar de calma a crisis.
 
+## Quintil
+
+Cada una de las cinco partes del mismo tamaño en que se puede dividir un conjunto de datos
+ordenados de menor a mayor. El quinto quintil es el 20% más alto.
+
+Se usa para definir los regímenes: en lugar de fijar a mano un umbral de volatilidad —que permitiría
+escoger el corte que da el resultado deseado— se toma como tensos los días del quintil más alto, que
+son el 20% de las sesiones por construcción.
+
 ## Régimen
 
 El estado del mercado. En este proyecto son dos, calma y tensión, y no se eligen a mano: son tensos

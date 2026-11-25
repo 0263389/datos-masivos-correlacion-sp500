@@ -24,7 +24,7 @@
 # MAGIC ## Dónde vive el código
 # MAGIC
 # MAGIC La matemática no está en este notebook: vive en **`src/risk.py`**, con
-# MAGIC **19 pruebas automáticas** en `tests/test_risk.py`.
+# MAGIC **25 pruebas automáticas** en `tests/test_risk.py`.
 # MAGIC
 # MAGIC Es el mismo principio del Entregable 1, y por las mismas razones: una función
 # MAGIC con entrada y salida se puede probar, reutilizar y editar en paralelo; una

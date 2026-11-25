@@ -31,6 +31,7 @@ from src.analysis import (  # noqa: E402
     sector_comparison,
 )
 from src.data import get_prices, get_sp500_constituents  # noqa: E402
+from src.quality import flag_suspicious_tickers  # noqa: E402
 from src.returns import to_log_returns  # noqa: E402
 from src.risk import (  # noqa: E402
     equal_weights,
@@ -83,16 +84,32 @@ def _equipondera(metodo: str) -> bool:
 # ==========================================================================
 @st.cache_data(ttl=TTL, show_spinner="Cargando precios...")
 def cargar() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Panel de rendimientos balanceado y el mapa de sectores.
+    """Panel de rendimientos balanceado, sin tickers corruptos, y los sectores.
 
     Se descartan las columnas con cualquier hueco en lugar de rellenarlas. Es
     la misma decision del Entregable 1: rellenar un precio faltante inventa un
     dia de rendimiento cero, que es informacion falsa y contamina la matriz de
     correlacion.
+
+    Despues se aplica ``flag_suspicious_tickers``, el mismo filtro de datos
+    corruptos del Entregable 1. Hoy no quita nada, porque el unico ticker
+    corrupto conocido -MNST, con el split aplicado de forma inconsistente- ya
+    se cae por el paso anterior al tener huecos. Esa coincidencia es justo la
+    razon de dejar el filtro escrito: sin el, el tablero excluiria al ticker
+    corrupto por accidente y no por criterio, y un dato futuro sin huecos lo
+    dejaria entrar sin que nadie se entere.
+
+    Por que este universo tiene 457 activos y el del Entregable 1 tiene 458
+    esta explicado en el README, seccion "Dos universos".
     """
     cons = get_sp500_constituents()
     sectores = dict(zip(cons["ticker"], cons["sector"]))
     rets = to_log_returns(get_prices([])).dropna(axis=1, how="any").dropna()
+
+    sospechosos = flag_suspicious_tickers(rets)
+    corruptos = sospechosos.index[sospechosos["sospechoso"]]
+    rets = rets.drop(columns=corruptos, errors="ignore")
+
     return rets, cons, sectores
 
 
@@ -198,7 +215,7 @@ def red(n_activos: int) -> dict:
 
     Se agrupa en un solo calculo porque todo parte del mismo arbol, y la
     disposicion de los nodos es lo unico que cuesta -- un segundo y medio para
-    458 activos.
+    el universo completo.
     """
     rets, _, sectores = cargar()
     uni = _muestra(rets.columns, n_activos)

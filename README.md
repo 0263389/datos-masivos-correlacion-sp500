@@ -420,7 +420,7 @@ hecho los pasos 0 a 3 de arriba; `pytest` viene en `requirements.txt`):
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-Deben pasar las **307 pruebas**. En macOS la primera ejecución después de instalar las dependencias
+Deben pasar las **308 pruebas**. En macOS la primera ejecución después de instalar las dependencias
 puede tardar varios minutos (el sistema revisa las librerías recién instaladas); las siguientes son
 más rápidas.
 
@@ -533,7 +533,7 @@ para tener más evidencia y bájalo si quieres que responda más rápido.
 .venv/bin/pytest
 ```
 
-Son 307 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
+Son 308 pruebas y tardan unos dos minutos. Cada módulo de `src/` tiene las suyas, y varias
 verifican que el estimador recupera parámetros que se escondieron a propósito: si no recupera lo
 que se sabe de antemano, no hay razón para creerle sobre datos reales.
 
@@ -586,7 +586,7 @@ datos-masivos-correlacion-sp500/
 │   ├── estilo.py                 Paleta, tipografía, glosario y componentes
 │   └── datos.py                  Carga y memorización de los cálculos caros
 │
-├── tests/                        307 pruebas
+├── tests/                        308 pruebas
 │   ├── test_risk.py              Motor de riesgo
 │   ├── test_validation.py        Validación hacia adelante
 │   ├── test_volatility.py        GARCH
@@ -595,6 +595,9 @@ datos-masivos-correlacion-sp500/
 │   ├── test_stress.py            Pruebas de estrés
 │   ├── test_analysis.py          Correlación, distancia y dispersión
 │   ├── test_network.py           Red del mercado
+│   ├── test_quality.py           Calidad de datos y detección de corrupción
+│   ├── test_data.py              Descarga, caché y respaldo
+│   ├── test_returns.py           Panel balanceado y rendimientos
 │   └── test_reproducibilidad.py  Fija las cifras publicadas contra el código
 │
 ├── notebooks/                    Entregable 1 — análisis local con pandas
@@ -680,6 +683,36 @@ corto, 2024) tienen uno cada uno y tampoco revierten. Todos se conservan.
 > `src/quality.py`. Hoy las dos implementaciones comparten los umbrales de `src/config.py`, y hay
 > pruebas que fallan si vuelven a separarse.
 > Ver [`docs/ENTREGABLE_2.md`](docs/ENTREGABLE_2.md#problemas-de-calidad-encontrados).
+
+> **Y una segunda vez, más fina.** Unificado el criterio, los dos lados seguían midiendo el 15% en
+> escalas distintas: Spark sobre el precio (`|precio/previo − 1| < 0.15`) y pandas sobre el
+> logaritmo (`|Σ log| < log 1.15`). Hacia arriba coinciden; hacia abajo no, porque una caída del 15%
+> mide 0.163 en logaritmos y no 0.140, así que pandas solo aceptaba regresos hasta −13%. Una acción
+> que cayera a 45 y rebotara a 86 contaba como reversión en Spark y no en pandas. También lo detectó
+> **Miguel Herrera**. Hoy la suma de logaritmos se convierte con `expm1` antes de comparar, de modo
+> que el umbral significa el mismo porcentaje en las dos capas, y hay una prueba con ese caso límite.
+
+### Dos universos: 458 y 457 activos
+
+El proyecto trabaja con dos paneles que difieren en un ticker, y conviene saberlo antes de comparar
+cifras entre entregables.
+
+| | Entregable 1 (notebook) | Motor y tablero (Entregables 3 y 4) |
+|---|---|---|
+| Cómo se arma | `build_balanced_panel` y después el filtro de corrupción | se descarta toda columna con algún hueco en la historia completa |
+| Activos | **458** | **457** |
+| Sesiones | 2,931 | 2,933 |
+| Pares | 104,653 | 104,196 |
+
+La regla del motor es más estricta, así que pierde un ticker más (`FISV`) y a cambio conserva dos
+sesiones más. **La diferencia no cambia ninguna conclusión**: la correlación media dentro del mismo
+sector es 0.4404 sobre 458 activos y 0.4407 sobre 457, contra 0.3164 en ambos casos, y el efecto
+sectorial es 1.392× y 1.393× respectivamente.
+
+El filtro de corrupción corre en los dos caminos. En el del motor no quita nada, porque `MNST` ya se
+cae al tener huecos, pero se deja escrito a propósito: sin él, el tablero excluiría al ticker
+corrupto **por accidente y no por criterio**, y un dato futuro sin huecos lo dejaría entrar sin que
+nadie se diera cuenta.
 
 ---
 
